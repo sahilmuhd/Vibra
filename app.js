@@ -414,6 +414,18 @@ function renderMicGrid(){
   const seats = currentSeats();
   document.getElementById('mic-grid').innerHTML = seats.map((p,idx)=> seatHTML(p, idx)).join('');
 }
+// Toggles the 'speaking' class on existing seat elements without rebuilding their markup.
+// Falls back to a full render if the grid's DOM doesn't match the current seat count
+// (e.g. someone joined/left since the last render).
+function updateSeatSpeakingClasses(seats){
+  const grid = document.getElementById('mic-grid');
+  const nodes = grid.children;
+  if(nodes.length !== seats.length){ renderMicGrid(); return; }
+  seats.forEach((s, idx)=>{
+    const ring = nodes[idx] && nodes[idx].querySelector('.vibra-ring');
+    if(ring) ring.classList.toggle('speaking', !!s.speaking);
+  });
+}
 
 function seatUserForActions(seat){
   // Resolve a display-friendly recipient object (works for both real DATA users and synthetic seat occupants)
@@ -591,7 +603,7 @@ function startRoomAmbience(){
     const candidates = seats.filter(s=>!s.empty && !s.muted);
     seats.forEach(s=> s.speaking = false);
     if(candidates.length){ candidates[Math.floor(Math.random()*candidates.length)].speaking = true; }
-    renderMicGrid();
+    updateSeatSpeakingClasses(seats);
   }, 3200));
 
   // ambient chat / gifts / join-leave / new raised hands
@@ -715,13 +727,33 @@ function startReply(name, text){
   document.getElementById('reply-snip').textContent = text;
   document.getElementById('reply-preview').classList.add('show');
   document.getElementById('chat-input').focus();
+  if(document.getElementById('mention-suggestions').classList.contains('show')) positionMentionSuggestions();
 }
 function cancelReply(){ STATE.replyTo = null; hideReplyPreview(); }
-function hideReplyPreview(){ const el = document.getElementById('reply-preview'); if(el) el.classList.remove('show'); }
+function hideReplyPreview(){
+  const el = document.getElementById('reply-preview');
+  if(el) el.classList.remove('show');
+  if(document.getElementById('mention-suggestions').classList.contains('show')) positionMentionSuggestions();
+}
 
 /* ---- @mentions ---- */
 function mentionCandidates(){
   return currentSeats().filter(s=>!s.empty).map(s=> ({name: s.isMe?'You':s.name, avatar:s.avatar}));
+}
+function positionMentionSuggestions(){
+  // The dropdown always sits just above whichever element currently forms the
+  // top edge of the input controls (the reply preview when it's showing, or
+  // the chat input bar otherwise), so it never overlaps the reply preview.
+  const box = document.getElementById('mention-suggestions');
+  const reply = document.getElementById('reply-preview');
+  const chatBar = document.querySelector('.chat-input-bar');
+  const container = box.offsetParent;
+  if(!container || !chatBar) return;
+  const anchorEl = (reply && reply.classList.contains('show')) ? reply : chatBar;
+  const containerRect = container.getBoundingClientRect();
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const gap = 8;
+  box.style.bottom = Math.round(containerRect.bottom - anchorRect.top + gap) + 'px';
 }
 function updateMentionSuggestions(){
   const input = document.getElementById('chat-input');
@@ -734,6 +766,7 @@ function updateMentionSuggestions(){
   if(!matches.length){ box.classList.remove('show'); return; }
   box.innerHTML = matches.slice(0,5).map(c=>`<div class="mention-row" data-mention="${escapeAttr(c.name)}"><img class="avatar" src="${c.avatar}">@${escapeHTML(c.name)}</div>`).join('');
   box.classList.add('show');
+  positionMentionSuggestions();
 }
 function applyMention(name){
   const input = document.getElementById('chat-input');
