@@ -72,6 +72,14 @@ function getWallet(){ return Storage.get(Storage.KEYS.WALLET, 0); }
 function setWallet(v){ Storage.set(Storage.KEYS.WALLET, Math.max(0, v)); }
 
 /* ---------------------------- TOAST (app.js) ----------------------------- */
+// Deterministic "random" based on a string seed — used so decorative values
+// (who's ring is pulsing, gift counts shown) don't reshuffle every re-render.
+function seededRandom(seed){
+  let h = 0;
+  for(let i=0;i<seed.length;i++){ h = (h*31 + seed.charCodeAt(i)) | 0; }
+  return Math.abs(Math.sin(h)) % 1;
+}
+
 function showToast(message, type){
   type = type || 'info';
   const stack = document.getElementById('toast-stack');
@@ -111,15 +119,35 @@ function navigateTo(tabName){
 }
 
 function openOverlay(id){
-  document.getElementById(id).classList.add('active');
+  const el = document.getElementById(id);
+  el.classList.remove('closing');
+  el.classList.add('active');
   document.body.style.overflow = 'hidden';
 }
 function closeOverlay(id){
-  document.getElementById(id).classList.remove('active');
-  document.body.style.overflow = '';
+  const el = document.getElementById(id);
+  if(!el || !el.classList.contains('active')) return;
+  el.classList.add('closing');
+  setTimeout(()=>{
+    el.classList.remove('active');
+    el.classList.remove('closing');
+    document.body.style.overflow = '';
+  }, 180);
 }
-function openModal(id){ document.getElementById(id).classList.add('show'); }
-function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+function openModal(id){
+  const el = document.getElementById(id);
+  el.classList.remove('closing');
+  el.classList.add('show');
+}
+function closeModal(id){
+  const el = document.getElementById(id);
+  if(!el || !el.classList.contains('show')) return;
+  el.classList.add('closing');
+  setTimeout(()=>{
+    el.classList.remove('show');
+    el.classList.remove('closing');
+  }, 180);
+}
 
 /* ---------------------------- AUTH (auth.js) ------------------------------ */
 function switchAuthScreen(show, hide){
@@ -187,7 +215,7 @@ function renderStories(){
   let html = `<div class="story story-add"><div class="avatar-frame">+</div><span>Add Story</span></div>`;
   DATA.users.filter(u=>u.online).forEach(u=>{
     html += `<div class="story" data-open-profile="${u.id}">
-      <div class="vibra-ring ${Math.random()>0.6?'speaking':''}"><img class="avatar" src="${u.avatar}"><span class="online-dot"></span></div>
+      <div class="vibra-ring ${seededRandom(u.id+'story')>0.6?'speaking':''}"><img class="avatar" src="${u.avatar}"><span class="online-dot"></span></div>
       <span>${u.name.split(' ')[0]}</span>
     </div>`;
   });
@@ -353,6 +381,10 @@ function openRoom(roomId){
 
   const counter = document.getElementById('chat-char-counter');
   if(counter){ counter.textContent = '0/200'; counter.classList.remove('warn'); }
+  const fab = document.getElementById('scroll-bottom-fab');
+  if(fab) fab.classList.remove('show');
+  const sendBtn = document.getElementById('chat-send');
+  if(sendBtn) sendBtn.disabled = true;
 
   openOverlay('screen-room');
   showToast(`You joined ${room.name}`, 'success');
@@ -611,7 +643,12 @@ function appendChatMessage(m, isAmbient){
   if(!box) return;
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   box.insertAdjacentHTML('beforeend', chatMessageHTML(m));
-  if(nearBottom || !isAmbient) box.scrollTop = box.scrollHeight;
+  if(nearBottom || !isAmbient){
+    box.scrollTop = box.scrollHeight;
+  } else {
+    const fab = document.getElementById('scroll-bottom-fab');
+    if(fab) fab.classList.add('show');
+  }
 }
 
 function escapeHTML(str){
@@ -632,13 +669,15 @@ function nowTime(){
 function sendMessage(){
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
-  if(!text){ return; }
+  if(!text){ showToast('Message cannot be empty', 'error'); return; }
   const msg = {who:'me', text, time: nowTime()};
   if(STATE.replyTo) msg.replyTo = STATE.replyTo;
   appendChatMessage(msg);
   input.value = '';
   updateCharCounter();
   cancelReply();
+  const sendBtn = document.getElementById('chat-send');
+  if(sendBtn) sendBtn.disabled = true;
 }
 
 function updateVoiceControlUI(){
@@ -781,7 +820,15 @@ function openGiftModal(recipient, seatIdx){
   document.getElementById('gift-recipient-name').textContent = recipient.name.split(' ')[0];
   document.getElementById('gift-modal-balance').textContent = getWallet().toLocaleString();
   document.querySelectorAll('.gift-item').forEach(el=>el.classList.remove('selected'));
+  updateGiftAffordability();
   openModal('gift-modal');
+}
+function updateGiftAffordability(){
+  const balance = getWallet();
+  document.querySelectorAll('.gift-item').forEach(el=>{
+    const gift = DATA.giftCatalog.find(g=>g.id===el.dataset.giftId);
+    if(gift) el.classList.toggle('unaffordable', gift.cost > balance);
+  });
 }
 function sendGift(){
   if(!STATE.selectedGift){ showToast('Choose a gift first', 'error'); return; }
@@ -947,7 +994,7 @@ function profileHTML(user, isSelf){
     </div>
     <div class="tab-panel" data-panel="gifts">
       <div class="gifts-received-grid">
-        ${DATA.giftCatalog.map(g=>`<div class="g"><div class="emoji">${g.emoji}</div><div class="cnt">×${Math.floor(Math.random()*40)}</div></div>`).join('')}
+        ${DATA.giftCatalog.map(g=>`<div class="g"><div class="emoji">${g.emoji}</div><div class="cnt">×${Math.floor(seededRandom(user.id+g.id)*40)}</div></div>`).join('')}
       </div>
     </div>
     <div class="tab-panel" data-panel="achievements">
@@ -1022,6 +1069,9 @@ function openDM(userId){
   document.getElementById('dm-avatar').src = u.avatar;
   document.getElementById('dm-name').textContent = u.name;
   document.getElementById('dm-status').textContent = u.online ? 'Online' : 'Offline';
+  document.getElementById('dm-input').value = '';
+  const dmSendBtn = document.getElementById('dm-send');
+  if(dmSendBtn) dmSendBtn.disabled = true;
   renderDMBody();
   openOverlay('screen-dm');
 }
@@ -1036,9 +1086,12 @@ function renderDMBody(){
 function sendDM(){
   const input = document.getElementById('dm-input');
   const text = input.value.trim();
-  if(!text || !STATE.activeDM) return;
+  if(!STATE.activeDM) return;
+  if(!text){ showToast('Message cannot be empty', 'error'); return; }
   dmThreads[STATE.activeDM].push({who:'me', text, time: nowTime()});
   input.value = '';
+  const dmSendBtn = document.getElementById('dm-send');
+  if(dmSendBtn) dmSendBtn.disabled = true;
   renderDMBody();
   showToast('Message sent successfully', 'success');
 }
@@ -1222,8 +1275,13 @@ function bindRoomScreen(){
   });
 
   document.getElementById('chat-send').addEventListener('click', sendMessage);
+  document.getElementById('chat-send').disabled = true;
   document.getElementById('chat-input').addEventListener('keydown', e=>{ if(e.key==='Enter') sendMessage(); });
-  document.getElementById('chat-input').addEventListener('input', ()=>{ updateCharCounter(); updateMentionSuggestions(); });
+  document.getElementById('chat-input').addEventListener('input', ()=>{
+    updateCharCounter();
+    updateMentionSuggestions();
+    document.getElementById('chat-send').disabled = !document.getElementById('chat-input').value.trim();
+  });
   document.getElementById('mention-suggestions').addEventListener('click', e=>{
     const row = e.target.closest('[data-mention]');
     if(row) applyMention(row.dataset.mention);
@@ -1233,6 +1291,17 @@ function bindRoomScreen(){
     const msg = e.target.closest('.msg:not(.system)');
     if(!msg) return;
     startReply(msg.dataset.msgName, msg.dataset.msgText);
+  });
+  document.getElementById('scroll-bottom-fab').addEventListener('click', ()=>{
+    const box = document.getElementById('chat-messages');
+    box.scrollTop = box.scrollHeight;
+    document.getElementById('scroll-bottom-fab').classList.remove('show');
+  });
+  document.getElementById('chat-messages').addEventListener('scroll', ()=>{
+    const box = document.getElementById('chat-messages');
+    if(box.scrollHeight - box.scrollTop - box.clientHeight < 40){
+      document.getElementById('scroll-bottom-fab').classList.remove('show');
+    }
   });
 
   // tappable mic seats
@@ -1310,6 +1379,10 @@ function bindGifts(){
   document.getElementById('gift-grid').addEventListener('click', e=>{
     const item = e.target.closest('[data-gift-id]');
     if(!item) return;
+    if(item.classList.contains('unaffordable')){
+      showToast("You don't have enough coins for this gift", 'error');
+      return;
+    }
     document.querySelectorAll('.gift-item').forEach(el=>el.classList.remove('selected'));
     item.classList.add('selected');
     STATE.selectedGift = item.dataset.giftId;
@@ -1357,16 +1430,30 @@ function bindProfileAndMessages(){
   });
 
   document.getElementById('dm-send').addEventListener('click', sendDM);
+  document.getElementById('dm-send').disabled = true;
   document.getElementById('dm-input').addEventListener('keydown', e=>{ if(e.key==='Enter') sendDM(); });
+  document.getElementById('dm-input').addEventListener('input', e=>{
+    document.getElementById('dm-send').disabled = !e.target.value.trim();
+  });
   document.getElementById('dm-emoji-toggle').addEventListener('click', ()=> document.getElementById('dm-emoji-picker').classList.toggle('show'));
   renderEmojiPicker('dm-emoji-picker','dm-input');
 
   document.getElementById('messages-search').addEventListener('input', e=>{
     const q = e.target.value.toLowerCase();
+    let visibleCount = 0;
     document.querySelectorAll('#messages-list .msg-list-row').forEach(row=>{
       const text = row.textContent.toLowerCase();
-      row.style.display = text.includes(q) ? '' : 'none';
+      const matches = text.includes(q);
+      row.style.display = matches ? '' : 'none';
+      if(matches) visibleCount++;
     });
+    const emptyEl = document.getElementById('messages-empty');
+    if(q && visibleCount === 0){
+      emptyEl.innerHTML = emptyStateHTML('🔍','No messages match','Try a different name or keyword.');
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+    }
   });
 }
 
@@ -1436,6 +1523,19 @@ function initSplash(){
   }, 2200);
 }
 
+function bindGlobalKeyboard(){
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Escape') return;
+    const openModalEl = document.querySelector('.modal-backdrop.show');
+    if(openModalEl){ openModalEl.classList.remove('show'); return; }
+    const openOverlayEl = document.querySelector('.overlay-screen.active');
+    if(openOverlayEl){
+      if(openOverlayEl.id === 'screen-room'){ leaveRoom(); }
+      else { closeOverlay(openOverlayEl.id); }
+    }
+  });
+}
+
 function init(){
   initStorageDefaults();
   bindPasswordToggles();
@@ -1450,6 +1550,7 @@ function init(){
   bindCreateRoom();
   bindSettings();
   bindOverlaysAndModals();
+  bindGlobalKeyboard();
   renderDiscoverTab();
   initSplash();
 }
