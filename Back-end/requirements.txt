@@ -11,3 +11,4 @@ livekit-api==0.7.1
 gunicorn==22.0.0
 daphne==4.1.2
 setuptools<81
+whitenoise==6.7.0
