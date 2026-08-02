@@ -11,7 +11,7 @@
    functions to change.
    ========================================================================== */
 
-const API_BASE = "http://localhost:8000/api"; // change to your Render URL when deployed
+const API_BASE = "https://vibra-backend-vac1.onrender.com/api"; // change to your Render URL when deployed
 
 const Api = {
   // ---- token storage (separate from your existing Storage.KEYS, so it
