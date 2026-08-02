@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>VIBRA — Connect. Talk. Belong.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================================
+   VIBRA — DESIGN TOKENS
+   (maps conceptually to css/style.css)
+   ========================================================================== */
+:root{
+  --bg: #0B0A12;
+  --bg-elevated: #14121F;
+  --bg-elevated-2: #1B1826;
+  --surface-glass: rgba(255,255,255,0.055);
+  --surface-glass-strong: rgba(255,255,255,0.09);
+  --border-glass: rgba(255,255,255,0.09);
+  --border-glass-strong: rgba(255,255,255,0.16);
+
+  --accent-1: #B721FF;
+  --accent-2: #FF3EA5;
+  --accent-grad: linear-gradient(135deg, var(--accent-1) 0%, var(--accent-2) 100%);
+  --accent-grad-soft: linear-gradient(135deg, rgba(183,33,255,0.22) 0%, rgba(255,62,165,0.22) 100%);
+
+  --cyan: #2FE6D8;
+  --gold: #FFC857;
+  --danger: #FF5C6C;
+  --success: #4ADE80;
+
+  --text-primary: #F5F3FA;
+  --text-secondary: #A9A3BC;
+  --text-tertiary: #857E9F;
+
+  --font-display: 'Sora', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --shadow-glow: 0 8px 30px rgba(183,33,255,0.25);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.35);
+
+  --nav-h: 72px;
+  --top-h: 64px;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html,body{ height:100%; }
+body{
+  background:
+    radial-gradient(circle at 15% 0%, rgba(183,33,255,0.16), transparent 45%),
+    radial-gradient(circle at 90% 15%, rgba(47,230,216,0.10), transparent 40%),
+    var(--bg);
+  color:var(--text-primary);
+  font-family:var(--font-body);
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+img{ display:block; max-width:100%; }
+button{ font-family:inherit; cursor:pointer; border:none; background:none; color:inherit; }
+input,textarea,select{ font-family:inherit; color:inherit; background:none; border:none; outline:none; }
+a{ color:inherit; text-decoration:none; }
+::-webkit-scrollbar{ width:0; height:0; }
+.hidden{ display:none !important; }
+.h1{ font-family:var(--font-display); font-weight:800; }
+.h2{ font-family:var(--font-display); font-weight:700; }
+.mono{ font-family:var(--font-mono); }
+
+.gradient-text{
+  background:var(--accent-grad);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+.glass{
+  background:var(--surface-glass);
+  border:1px solid var(--border-glass);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding:14px 20px; border-radius:var(--radius-pill);
+  font-weight:600; font-size:15px; transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+.btn:active{ transform:scale(0.96); }
+.btn-primary{ background:var(--accent-grad); color:#fff; box-shadow:var(--shadow-glow); }
+.btn-primary:hover{ box-shadow:0 10px 34px rgba(183,33,255,0.4); }
+.btn-glass{ background:var(--surface-glass); border:1px solid var(--border-glass-strong); color:var(--text-primary); }
+.btn-glass:hover{ background:var(--surface-glass-strong); }
+.btn-ghost{ color:var(--text-secondary); }
+.btn-block{ width:100%; }
+.btn-sm{ padding:9px 16px; font-size:13px; }
+.btn-danger{ background:rgba(255,92,108,0.14); color:var(--danger); border:1px solid rgba(255,92,108,0.3); }
+.btn:disabled, .btn.is-disabled{ opacity:.4; cursor:not-allowed; box-shadow:none; pointer-events:none; }
+
+/* Accessibility: visible keyboard focus without adding a ring on touch/mouse clicks */
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--accent-2); outline-offset:2px; border-radius:8px;
+}
+/* iOS zooms the viewport if a focused input's font-size is under 16px — keep all inputs at 16px on small screens */
+@media (max-width: 480px){
+  .input-wrap input, .chat-input-bar input, textarea{ font-size:16px !important; }
+}
+/* Safe-area padding for notched phones */
+.bottom-nav{ padding-bottom:env(safe-area-inset-bottom); height:calc(var(--nav-h) + env(safe-area-inset-bottom)); }
+.chat-input-bar, .voice-controls{ padding-bottom:calc(12px + env(safe-area-inset-bottom)); }
+#toast-stack{ top:calc(18px + env(safe-area-inset-top)); }
+
+/* Vibra signature: pulse ring — a concentric animated ring used for
+   speaking/live/online avatars everywhere in the app */
+.vibra-ring{ position:relative; display:inline-flex; }
+.vibra-ring::before{
+  content:''; position:absolute; inset:-6px; border-radius:50%;
+  background:var(--accent-grad); opacity:0; z-index:0;
+}
+.vibra-ring.speaking::before{ opacity:1; animation:ringPulse 1.4s ease-out infinite; }
+@keyframes ringPulse{
+  0%{ box-shadow:0 0 0 0 rgba(183,33,255,0.55), 0 0 0 0 rgba(255,62,165,0.35); }
+  100%{ box-shadow:0 0 0 10px rgba(183,33,255,0), 0 0 0 20px rgba(255,62,165,0); }
+}
+.avatar{ border-radius:50%; object-fit:cover; position:relative; z-index:1; border:2px solid var(--bg); background:var(--bg-elevated-2); }
+.online-dot{
+  position:absolute; width:11px; height:11px; border-radius:50%;
+  background:var(--success); border:2px solid var(--bg); bottom:0; right:0; z-index:2;
+}
+.live-dot{
+  position:absolute; width:11px; height:11px; border-radius:50%;
+  background:var(--danger); border:2px solid var(--bg); bottom:0; right:0; z-index:2;
+  box-shadow:0 0 0 0 rgba(255,92,108,0.6); animation:livePulse 1.6s infinite;
+}
+@keyframes livePulse{ 0%{box-shadow:0 0 0 0 rgba(255,92,108,.55);} 100%{box-shadow:0 0 0 8px rgba(255,92,108,0);} }
+
+/* App scaffold */
+#app{ position:relative; min-height:100vh; max-width:1400px; margin:0 auto; }
+
+/* Toasts */
+#toast-stack{ position:fixed; top:18px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:10px; width:min(92vw,380px); }
+.toast{
+  padding:14px 18px; border-radius:var(--radius-md); font-size:14px; font-weight:500;
+  display:flex; align-items:center; gap:10px; animation:toastIn .25s ease, toastOut .25s ease 2.6s forwards;
+  box-shadow:var(--shadow-card);
+}
+.toast.success{ background:rgba(74,222,128,0.14); border:1px solid rgba(74,222,128,0.35); color:#c8ffdd; }
+.toast.info{ background:var(--surface-glass-strong); border:1px solid var(--border-glass-strong); }
+.toast.error{ background:rgba(255,92,108,0.14); border:1px solid rgba(255,92,108,0.35); color:#ffd7db; }
+@keyframes toastIn{ from{opacity:0; transform:translateY(-14px);} to{opacity:1; transform:translateY(0);} }
+@keyframes toastOut{ to{opacity:0; transform:translateY(-14px);} }
+
+/* ==========================================================================
+   SPLASH (auth.css region)
+   ========================================================================== */
+#screen-splash{
+  position:fixed; inset:0; z-index:500; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:18px;
+  background:radial-gradient(circle at 50% 30%, rgba(183,33,255,0.25), transparent 55%), var(--bg);
+}
+.splash-logo{
+  width:96px; height:96px; border-radius:28px; background:var(--accent-grad);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-weight:800; font-size:34px; color:#fff;
+  box-shadow:0 0 60px rgba(183,33,255,0.5); animation:logoPop .8s cubic-bezier(.2,1.4,.4,1);
+}
+@keyframes logoPop{ 0%{transform:scale(0.4) rotate(-8deg); opacity:0;} 100%{transform:scale(1) rotate(0); opacity:1;} }
+.splash-name{ font-size:38px; letter-spacing:2px; }
+.splash-tag{ color:var(--text-secondary); font-size:15px; text-align:center; line-height:1.6; }
+.splash-tag span{ display:inline-block; opacity:0; animation:fadeUp .5s ease forwards; }
+.splash-tag span:nth-child(1){ animation-delay:.6s; }
+.splash-tag span:nth-child(2){ animation-delay:.85s; }
+.splash-tag span:nth-child(3){ animation-delay:1.1s; }
+@keyframes fadeUp{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+.splash-loader{ width:120px; height:3px; border-radius:2px; background:var(--surface-glass-strong); overflow:hidden; margin-top:10px; }
+.splash-loader::after{ content:''; display:block; height:100%; width:40%; background:var(--accent-grad); animation:loaderMove 1.1s ease-in-out infinite; }
+@keyframes loaderMove{ 0%{transform:translateX(-100%);} 100%{transform:translateX(340%);} }
+
+/* ==========================================================================
+   AUTH SCREENS
+   ========================================================================== */
+.auth-screen{ min-height:100vh; padding:32px 22px 40px; display:flex; flex-direction:column; }
+.auth-brand{ display:flex; align-items:center; gap:10px; margin-bottom:28px; }
+.auth-brand .mark{ width:34px; height:34px; border-radius:10px; background:var(--accent-grad); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:800; color:#fff; font-size:15px; }
+.auth-brand .name{ font-family:var(--font-display); font-weight:700; font-size:18px; letter-spacing:1px; }
+.auth-head h1{ font-size:28px; margin-bottom:6px; }
+.auth-head p{ color:var(--text-secondary); font-size:14.5px; margin-bottom:26px; }
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:12.5px; color:var(--text-secondary); margin-bottom:7px; font-weight:600; letter-spacing:.3px; }
+.input-wrap{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-radius:var(--radius-md); background:var(--surface-glass); border:1px solid var(--border-glass); transition:border-color .15s; }
+.input-wrap:focus-within{ border-color:var(--accent-1); }
+.input-wrap input{ flex:1; min-width:0; font-size:14.5px; color:var(--text-primary); }
+.input-wrap input::placeholder{ color:var(--text-tertiary); }
+.input-icon{ opacity:.6; font-size:15px; }
+.field-error{ color:var(--danger); font-size:12px; margin-top:6px; display:none; }
+.field.error .input-wrap{ border-color:var(--danger); }
+.field.error .field-error{ display:block; }
+.auth-links{ display:flex; justify-content:space-between; align-items:center; margin:14px 0 22px; font-size:13px; }
+.auth-links button{ color:var(--accent-2); font-weight:600; }
+.divider{ display:flex; align-items:center; gap:12px; color:var(--text-tertiary); font-size:12.5px; margin:22px 0; }
+.divider::before,.divider::after{ content:''; flex:1; height:1px; background:var(--border-glass); }
+.social-row{ display:flex; flex-direction:column; gap:10px; }
+.auth-switch{ margin-top:auto; padding-top:24px; text-align:center; font-size:14px; color:var(--text-secondary); }
+.auth-switch button{ color:var(--accent-2); font-weight:700; }
+.success-banner{ background:rgba(74,222,128,0.12); border:1px solid rgba(74,222,128,.3); color:#c8ffdd; padding:12px 14px; border-radius:var(--radius-md); font-size:13.5px; margin-bottom:16px; display:none; }
+.success-banner.show{ display:block; }
+
+/* ==========================================================================
+   APP SHELL / TOP BAR
+   ========================================================================== */
+#app-shell{ display:none; min-height:100vh; padding-bottom:calc(var(--nav-h) + 14px); }
+#app-shell.active{ display:block; }
+.topbar{
+  position:sticky; top:0; z-index:40; padding:16px 18px 10px;
+  background:linear-gradient(var(--bg) 60%, transparent);
+}
+.topbar-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.brand-mini{ display:flex; align-items:center; gap:8px; }
+.brand-mini .mark{ width:28px; height:28px; border-radius:8px; background:var(--accent-grad); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:800; font-size:13px; color:#fff; }
+.brand-mini .name{ font-family:var(--font-display); font-weight:700; letter-spacing:1px; font-size:16px; }
+.topbar-actions{ display:flex; align-items:center; gap:14px; }
+.icon-btn{ position:relative; width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--surface-glass); border:1px solid var(--border-glass); font-size:16px; }
+.icon-btn .badge{ position:absolute; top:-3px; right:-3px; background:var(--accent-2); color:#fff; font-size:10px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+.greeting{ font-size:20px; font-weight:700; font-family:var(--font-display); margin-bottom:14px; }
+.greeting span{ color:var(--text-secondary); font-weight:500; font-family:var(--font-body); font-size:14px; display:block; margin-top:2px; }
+.search-bar{ display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:var(--radius-pill); }
+.search-bar input{ flex:1; font-size:14px; }
+.search-bar input::placeholder{ color:var(--text-tertiary); }
+
+.section{ padding:22px 0 4px; }
+.section-head{ display:flex; align-items:center; justify-content:space-between; padding:0 18px; margin-bottom:14px; }
+.section-head h2{ font-size:17px; }
+.section-head .see-all{ font-size:12.5px; color:var(--accent-2); font-weight:600; }
+.hscroll{ display:flex; gap:14px; overflow-x:auto; padding:2px 18px 8px; scroll-snap-type:x proximity; }
+
+/* Stories */
+.story{ display:flex; flex-direction:column; align-items:center; gap:7px; scroll-snap-align:start; flex-shrink:0; width:64px; }
+.story .avatar{ width:56px; height:56px; }
+.story-add .avatar-frame{ width:56px; height:56px; border-radius:50%; border:1.5px dashed var(--border-glass-strong); display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--accent-2); background:var(--surface-glass); }
+.story span{ font-size:11.5px; color:var(--text-secondary); max-width:60px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Categories */
+.chip-row{ display:flex; gap:10px; overflow-x:auto; padding:0 18px 4px; }
+.chip{ flex-shrink:0; padding:9px 18px; border-radius:var(--radius-pill); font-size:13px; font-weight:600; background:var(--surface-glass); border:1px solid var(--border-glass); color:var(--text-secondary); transition:all .15s; }
+.chip.active{ background:var(--accent-grad); color:#fff; border-color:transparent; }
+
+/* Room cards */
+.room-grid{ display:grid; grid-template-columns:1fr; gap:14px; padding:0 18px; }
+.room-card{
+  border-radius:var(--radius-lg); padding:16px; position:relative; overflow:hidden;
+  box-shadow:var(--shadow-card); transition:transform .18s ease;
+}
+.room-card:active{ transform:scale(0.98); }
+.room-card::before{ content:''; position:absolute; inset:0; opacity:.85; z-index:0; }
+.room-card > *{ position:relative; z-index:1; }
+.room-card-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
+.room-badge{ display:inline-flex; align-items:center; gap:5px; background:rgba(0,0,0,0.35); padding:5px 10px; border-radius:var(--radius-pill); font-size:11px; font-weight:700; letter-spacing:.4px; }
+.room-badge.live{ color:#ffd7db; }
+.room-cat{ font-size:11px; color:rgba(255,255,255,0.85); background:rgba(0,0,0,0.3); padding:5px 10px; border-radius:var(--radius-pill); font-weight:600; }
+.room-name{ font-family:var(--font-display); font-size:19px; font-weight:700; color:#fff; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.room-desc{ font-size:12.5px; color:rgba(255,255,255,0.78); margin-bottom:14px; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.room-card-bottom{ display:flex; align-items:center; justify-content:space-between; }
+.room-avatars{ display:flex; }
+.room-avatars .avatar{ width:28px; height:28px; margin-left:-10px; border-width:2px; }
+.room-avatars .avatar:first-child{ margin-left:0; }
+.room-online{ font-size:11.5px; color:rgba(255,255,255,0.85); margin-left:8px; font-weight:600; }
+.room-join{ padding:9px 18px; border-radius:var(--radius-pill); background:rgba(255,255,255,0.16); backdrop-filter:blur(6px); color:#fff; font-size:12.5px; font-weight:700; border:1px solid rgba(255,255,255,0.3); }
+.room-join:active{ background:#fff; color:var(--bg); }
+
+/* discover list rows */
+.discover-row{ display:flex; gap:12px; align-items:center; padding:12px 18px; }
+.discover-row .thumb{ width:56px; height:56px; border-radius:var(--radius-md); flex-shrink:0; }
+.discover-row .meta{ flex:1; min-width:0; }
+.discover-row .meta .name{ font-weight:700; font-size:14.5px; margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.discover-row .meta .sub{ font-size:12px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.discover-row .join-mini{ padding:8px 14px; border-radius:var(--radius-pill); font-size:12px; font-weight:700; }
+/* Participants list reuses the discover-row layout but shows people, not room thumbnails —
+   size it to match the other "person in this room" row (request-row) for consistency */
+#participants-list .thumb.avatar{ width:42px; height:42px; }
+
+.empty-state{ text-align:center; padding:50px 24px; color:var(--text-secondary); }
+.empty-state .emoji{ font-size:40px; margin-bottom:10px; }
+.empty-state h3{ color:var(--text-primary); font-size:16px; margin-bottom:6px; }
+.empty-state p{ font-size:13px; }
+
+/* Bottom nav */
+.bottom-nav{
+  position:fixed; bottom:0; left:0; right:0; z-index:50; height:var(--nav-h);
+  display:flex; align-items:center; justify-content:space-around;
+  background:rgba(11,10,18,0.85); backdrop-filter:blur(20px); border-top:1px solid var(--border-glass);
+  max-width:1400px; margin:0 auto;
+}
+.nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:10.5px; color:var(--text-tertiary); font-weight:600; padding:6px 10px; position:relative; }
+.nav-item .ic{ font-size:20px; }
+.nav-item.active{ color:var(--text-primary); }
+.nav-item.active .ic{ transform:translateY(-2px); }
+.nav-item.active::before{ content:''; position:absolute; top:-11px; width:26px; height:3px; border-radius:3px; background:var(--accent-grad); }
+.nav-item.create .ic{ width:38px; height:38px; border-radius:50%; background:var(--accent-grad); display:flex; align-items:center; justify-content:center; color:#fff; font-size:19px; box-shadow:var(--shadow-glow); }
+
+/* ==========================================================================
+   OVERLAY SCREEN (full screen pushed panel, used for room/wallet/profile/etc)
+   ========================================================================== */
+.overlay-screen{
+  position:fixed; inset:0; z-index:200; background:var(--bg); display:none; flex-direction:column;
+  animation:slideUp .28s cubic-bezier(.2,.8,.3,1);
+}
+.overlay-screen.active{ display:flex; }
+.overlay-screen.closing{ animation:slideDownOut .18s ease forwards; }
+@keyframes slideUp{ from{ transform:translateY(16px); opacity:0;} to{ transform:translateY(0); opacity:1;} }
+@keyframes slideDownOut{ from{ transform:translateY(0); opacity:1;} to{ transform:translateY(16px); opacity:0;} }
+.ov-header{
+  display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid var(--border-glass);
+  flex-shrink:0;
+}
+.ov-header .back-btn{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--surface-glass); font-size:16px; }
+.ov-header .title-block{ flex:1; min-width:0; }
+.ov-header .title-block h2{ font-size:18px; font-weight:700; font-family:var(--font-display); }
+.ov-header .title-block .sub{ font-size:12px; color:var(--text-secondary); }
+.ov-body{ flex:1; overflow-y:auto; }
+
+/* ==========================================================================
+   ROOM / CHAT SCREEN
+   ========================================================================== */
+.voice-area{
+  padding:20px 18px; background:radial-gradient(circle at 50% 0%, rgba(183,33,255,0.18), transparent 60%);
+  border-bottom:1px solid var(--border-glass);
+}
+.host-block{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:22px; }
+.host-block .avatar{ width:78px; height:78px; }
+.host-block .role{ font-size:11px; color:var(--gold); font-weight:700; letter-spacing:.5px; display:flex; align-items:center; gap:5px; }
+.host-block .uname{ font-weight:700; font-size:15px; max-width:70vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mic-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px 8px; }
+.mic-seat{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+.mic-seat .avatar{ width:50px; height:50px; }
+.mic-seat .uname{ font-size:11px; color:var(--text-secondary); max-width:60px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mic-seat .mic-status{ font-size:10px; }
+.mic-seat.empty .avatar-frame{ width:50px; height:50px; border-radius:50%; border:1.5px dashed var(--border-glass-strong); display:flex; align-items:center; justify-content:center; font-size:16px; color:var(--text-tertiary); }
+.mic-seat.muted .mic-status{ color:var(--text-tertiary); }
+.mic-seat.speaking .mic-status{ color:var(--cyan); }
+
+.chat-messages{ flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:16px; }
+.msg{ display:flex; gap:10px; }
+.msg .avatar{ width:34px; height:34px; flex-shrink:0; }
+.msg .msg-body .msg-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:3px; min-width:0; }
+.msg .msg-body .uname{ font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px; }
+.msg .msg-body .time{ font-size:10.5px; color:var(--text-tertiary); flex-shrink:0; }
+.msg .msg-body .text{ font-size:14px; line-height:1.5; color:var(--text-primary); }
+.msg.system{ justify-content:center; }
+.msg.system .text{ font-size:12px; color:var(--text-secondary); background:var(--surface-glass); padding:7px 14px; border-radius:var(--radius-pill); }
+.msg.gift .text{ color:var(--gold); font-weight:600; }
+
+.chat-input-bar{
+  display:flex; align-items:center; gap:8px; padding:12px 14px; border-top:1px solid var(--border-glass);
+  flex-shrink:0; background:var(--bg);
+}
+.chat-input-bar .input-wrap{ flex:1; padding:11px 16px; min-width:0; }
+.chat-input-bar .icon-btn{ width:44px; height:44px; font-size:17px; flex-shrink:0; }
+.chat-input-bar .send-btn{ width:42px; height:42px; border-radius:50%; background:var(--accent-grad); display:flex; align-items:center; justify-content:center; color:#fff; flex-shrink:0; }
+
+.voice-controls{
+  display:flex; align-items:center; justify-content:space-around; padding:14px 10px;
+  border-top:1px solid var(--border-glass); flex-shrink:0;
+}
+.vc-btn{ display:flex; flex-direction:column; align-items:center; gap:5px; font-size:10.5px; color:var(--text-secondary); }
+.vc-btn .ic{ width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:19px; background:var(--surface-glass); border:1px solid var(--border-glass); }
+.vc-btn.off .ic{ background:rgba(255,92,108,0.16); border-color:rgba(255,92,108,0.35); color:var(--danger); }
+.vc-btn.leave .ic{ background:rgba(255,92,108,0.9); color:#fff; }
+
+/* Emoji picker */
+.emoji-picker{ position:absolute; bottom:70px; left:14px; right:14px; background:var(--bg-elevated); border:1px solid var(--border-glass-strong); border-radius:var(--radius-lg); padding:14px; display:none; grid-template-columns:repeat(8,1fr); gap:8px; box-shadow:var(--shadow-card); z-index:60; }
+.emoji-picker.show{ display:grid; }
+.emoji-picker button{ font-size:20px; padding:6px; border-radius:var(--radius-sm); }
+.emoji-picker button:active{ background:var(--surface-glass); }
+
+/* ==========================================================================
+   ROOM ENHANCEMENTS — seats, requests, reply, mentions, combos, badges
+   ========================================================================== */
+.mic-seat{ cursor:pointer; transition:transform .12s ease; position:relative; }
+.mic-seat:active{ transform:scale(0.93); }
+.mic-seat.requesting .avatar-frame{ border-color:var(--accent-2); color:var(--accent-2); animation:seatPulse 1s ease-in-out infinite; }
+@keyframes seatPulse{ 0%,100%{opacity:1;} 50%{opacity:.45;} }
+.seat-level{ position:absolute; top:-4px; right:6px; background:var(--accent-grad); color:#fff; font-size:8.5px; font-weight:700; padding:1px 5px; border-radius:var(--radius-pill); z-index:2; border:1.5px solid var(--bg); }
+.seat-crown{ position:absolute; top:-10px; left:50%; transform:translateX(-50%); font-size:13px; z-index:2; }
+.seat-gift-pill{ font-size:9px; color:var(--gold); font-weight:700; margin-top:-2px; }
+.host-block{ cursor:pointer; }
+
+.vc-btn{ position:relative; }
+.vc-badge{ position:absolute; top:-4px; right:6px; background:var(--danger); color:#fff; font-size:9.5px; font-weight:700; min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
+.vc-btn.hand-active .ic{ background:var(--accent-grad-soft); border-color:var(--accent-1); color:var(--accent-2); }
+
+/* seat profile card */
+.seat-profile-head{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:6px 4px 18px; text-align:center; }
+.seat-profile-head .avatar{ width:74px; height:74px; }
+.seat-profile-head .name-row{ display:flex; align-items:center; gap:6px; font-weight:700; font-size:16px; }
+.seat-profile-head .sub{ font-size:12.5px; color:var(--text-secondary); }
+.seat-profile-actions{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:4px 4px 6px; }
+.seat-profile-actions .btn{ font-size:13px; }
+.seat-profile-actions .btn.full{ grid-column:1 / -1; }
+
+/* requests modal */
+.request-row{ display:flex; align-items:center; gap:12px; padding:11px 4px; border-bottom:1px solid var(--border-glass); }
+.request-row .avatar{ width:42px; height:42px; }
+.request-row .meta{ flex:1; min-width:0; font-size:13.5px; font-weight:600; }
+.request-row .meta span{ display:block; font-size:11.5px; color:var(--text-tertiary); font-weight:500; }
+.request-row .r-actions{ display:flex; gap:8px; }
+.request-row .r-actions button{ width:34px; height:34px; border-radius:50%; font-size:14px; }
+.r-approve{ background:rgba(74,222,128,0.16); color:var(--success); }
+.r-decline{ background:rgba(255,92,108,0.14); color:var(--danger); }
+
+/* room-more sheet */
+.sheet-action-row{ display:flex; align-items:center; gap:12px; padding:14px 6px; font-size:14.5px; font-weight:500; border-bottom:1px solid var(--border-glass); }
+.sheet-action-row:last-child{ border-bottom:none; }
+.sheet-action-row .ic{ width:34px; height:34px; border-radius:10px; background:var(--surface-glass); display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+.sheet-action-row.danger{ color:var(--danger); }
+
+/* reply preview */
+.reply-preview{ display:none; align-items:center; gap:10px; padding:9px 16px; border-top:1px solid var(--border-glass); background:var(--bg-elevated); font-size:12.5px; }
+.reply-preview.show{ display:flex; }
+.reply-preview .bar{ width:3px; align-self:stretch; background:var(--accent-grad); border-radius:2px; }
+.reply-preview .body{ flex:1; min-width:0; }
+.reply-preview .who{ font-weight:700; color:var(--accent-2); }
+.reply-preview .snip{ color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.reply-preview .close{ color:var(--text-tertiary); font-size:16px; }
+.msg-reply-quote{ font-size:11.5px; color:var(--text-tertiary); background:var(--surface-glass); padding:5px 9px; border-radius:var(--radius-sm); margin-bottom:4px; border-left:2px solid var(--accent-1); }
+.msg .msg-body{ cursor:pointer; flex:1; min-width:0; }
+
+/* mention suggestions */
+.mention-suggestions{ display:none; position:absolute; bottom:70px; left:14px; right:14px; background:var(--bg-elevated); border:1px solid var(--border-glass-strong); border-radius:var(--radius-md); overflow:hidden; box-shadow:var(--shadow-card); z-index:65; max-height:200px; overflow-y:auto; }
+.mention-suggestions.show{ display:block; }
+.mention-row{ display:flex; align-items:center; gap:10px; padding:10px 14px; font-size:13.5px; font-weight:600; }
+.mention-row .avatar{ width:26px; height:26px; }
+.mention-row:active{ background:var(--surface-glass); }
+
+/* char counter */
+.char-counter{ font-size:10.5px; color:var(--text-tertiary); padding:0 4px; align-self:center; flex-shrink:0; }
+.char-counter.warn{ color:var(--danger); }
+
+/* combo + big gift */
+.gift-combo{ position:absolute; font-size:22px; font-weight:800; color:var(--gold); text-shadow:0 2px 8px rgba(0,0,0,.6); animation:comboPop .9s ease forwards; }
+@keyframes comboPop{ 0%{transform:scale(0.4); opacity:0;} 30%{transform:scale(1.15); opacity:1;} 100%{transform:scale(1) translateY(-30px); opacity:0;} }
+.gift-fly.big{ font-size:110px; filter:drop-shadow(0 0 30px rgba(255,200,87,.7)); }
+.gift-flash{ position:fixed; inset:0; background:radial-gradient(circle, rgba(255,200,87,0.25), transparent 65%); z-index:399; pointer-events:none; animation:flashFade 1s ease forwards; }
+@keyframes flashFade{ from{opacity:1;} to{opacity:0;} }
+
+/* scroll-to-bottom FAB */
+.scroll-bottom-fab{
+  position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+  display:none; align-items:center; gap:6px; padding:8px 14px; border-radius:var(--radius-pill);
+  background:var(--bg-elevated-2); border:1px solid var(--border-glass-strong); box-shadow:var(--shadow-card);
+  font-size:12px; font-weight:600; color:var(--text-primary); z-index:55;
+}
+.scroll-bottom-fab.show{ display:flex; animation:fadeUp .2s ease; }
+.scroll-bottom-fab .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent-2); }
+
+/* gift item unaffordable state */
+.gift-item.unaffordable{ opacity:.45; }
+.gift-item.unaffordable .gcost{ color:var(--danger); }
+
+/* small helper: disabled send button look */
+.send-btn:disabled{ opacity:.35; pointer-events:none; }
+
+/* consistent press/hover feedback for interactive elements that were missing it */
+.chip{ cursor:pointer; }
+.chip:active{ transform:scale(0.94); }
+.chip:not(.active):hover{ background:var(--surface-glass-strong); }
+.tab-item{ cursor:pointer; transition:color .15s ease, border-color .15s ease; }
+.tab-item:active{ opacity:.7; }
+.nav-item{ cursor:pointer; transition:color .15s ease, transform .12s ease; }
+.nav-item:active{ transform:scale(0.92); }
+.privacy-opt{ cursor:pointer; transition:all .15s ease; }
+.privacy-opt:active{ transform:scale(0.97); }
+.privacy-opt.active{ background:var(--accent-grad-soft); border-color:var(--accent-1); }
+.discover-row .join-mini{ cursor:pointer; transition:transform .12s ease, background .15s ease; }
+.discover-row .join-mini:active{ transform:scale(0.92); }
+.icon-btn:active, .back-btn:active{ transform:scale(0.9); background:var(--surface-glass-strong); }
+.room-card:hover{ transform:translateY(-2px); }
+.discover-row:hover{ background:var(--surface-glass); }
+.msg-list-row:hover{ background:var(--surface-glass); }
+.notif-row:hover{ background:var(--surface-glass); }
+
+/* ==========================================================================
+   GIFT MODAL / MODALS
+   ========================================================================== */
+.modal-backdrop{ position:fixed; inset:0; background:rgba(4,3,8,0.7); backdrop-filter:blur(4px); z-index:300; display:none; align-items:flex-end; justify-content:center; }
+.modal-backdrop.show{ display:flex; animation:fadeIn .2s ease; }
+.modal-backdrop.closing{ animation:fadeOut .18s ease forwards; }
+@keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+@keyframes fadeOut{ from{opacity:1;} to{opacity:0;} }
+.modal-sheet{
+  width:100%; max-width:520px; background:var(--bg-elevated); border-radius:24px 24px 0 0;
+  border:1px solid var(--border-glass-strong); border-bottom:none; padding:20px 18px 28px;
+  animation:sheetUp .28s cubic-bezier(.2,.8,.3,1); max-height:82vh; overflow-y:auto;
+}
+@keyframes sheetUp{ from{transform:translateY(100%);} to{transform:translateY(0);} }
+.modal-backdrop.closing .modal-sheet{ animation:sheetDown .18s ease forwards; }
+@keyframes sheetDown{ from{transform:translateY(0); opacity:1;} to{transform:translateY(40px); opacity:0;} }
+.modal-backdrop.closing.center-align .modal-sheet.center{ animation:centerOut .16s ease forwards; }
+@keyframes centerOut{ from{transform:scale(1); opacity:1;} to{transform:scale(0.92); opacity:0;} }
+.modal-sheet.center{ border-radius:24px; border-bottom:1px solid var(--border-glass-strong); margin-bottom:auto; margin-top:auto; }
+.modal-backdrop.center-align{ align-items:center; padding:20px; }
+.sheet-handle{ width:38px; height:4px; border-radius:3px; background:var(--border-glass-strong); margin:0 auto 16px; }
+.sheet-title{ font-size:18px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; }
+.gift-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:8px; }
+.gift-item{ display:flex; flex-direction:column; align-items:center; gap:6px; padding:16px 8px; border-radius:var(--radius-md); background:var(--surface-glass); border:1px solid var(--border-glass); transition:all .15s; }
+.gift-item:active, .gift-item.selected{ background:var(--accent-grad-soft); border-color:var(--accent-1); }
+.gift-item .emoji{ font-size:30px; }
+.gift-item .gname{ font-size:12.5px; font-weight:600; }
+.gift-item .gcost{ font-size:11px; color:var(--gold); font-weight:600; }
+.gift-recipient{ display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--surface-glass); border-radius:var(--radius-md); margin-bottom:16px; }
+.gift-recipient .avatar{ width:34px; height:34px; }
+.gift-anim-layer{ position:fixed; inset:0; pointer-events:none; z-index:400; display:flex; align-items:center; justify-content:center; }
+.gift-fly{ font-size:70px; animation:giftFly 1.1s ease forwards; }
+@keyframes giftFly{
+  0%{ transform:scale(0.3) translateY(40px); opacity:0; }
+  25%{ transform:scale(1.3) translateY(0); opacity:1; }
+  70%{ transform:scale(1) translateY(-20px); opacity:1; }
+  100%{ transform:scale(0.6) translateY(-120px); opacity:0; }
+}
+
+/* ==========================================================================
+   WALLET
+   ========================================================================== */
+.wallet-hero{ margin:18px; padding:26px 22px; border-radius:var(--radius-xl); background:var(--accent-grad); position:relative; overflow:hidden; box-shadow:var(--shadow-glow); }
+.wallet-hero::after{ content:''; position:absolute; width:220px; height:220px; border-radius:50%; background:rgba(255,255,255,0.12); top:-90px; right:-60px; }
+.wallet-hero .label{ font-size:13px; color:rgba(255,255,255,0.85); margin-bottom:8px; }
+.wallet-hero .balance{ font-family:var(--font-display); font-size:36px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px; }
+.wallet-actions{ display:flex; gap:12px; padding:0 18px 8px; }
+.wallet-actions .btn{ flex:1; }
+.package-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:6px 18px 18px; }
+.package-card{ padding:18px 14px; border-radius:var(--radius-lg); text-align:center; position:relative; }
+.package-card .coins{ font-family:var(--font-display); font-weight:700; font-size:18px; margin-bottom:4px; }
+.package-card .price{ color:var(--text-secondary); font-size:13px; margin-bottom:12px; }
+.package-card.best::before{ content:'BEST VALUE'; position:absolute; top:-9px; left:50%; transform:translateX(-50%); background:var(--gold); color:#1a1400; font-size:9.5px; font-weight:800; padding:3px 10px; border-radius:var(--radius-pill); letter-spacing:.4px; }
+.tx-row{ display:flex; align-items:center; justify-content:space-between; padding:13px 18px; border-bottom:1px solid var(--border-glass); gap:10px; }
+.tx-row .tx-icon{ width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; margin-right:10px; flex-shrink:0; }
+.tx-row .tx-info{ flex:1; display:flex; align-items:center; min-width:0; }
+.tx-row .tx-meta{ min-width:0; flex:1; }
+.tx-row .tx-meta .t{ font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tx-row .tx-meta .d{ font-size:11.5px; color:var(--text-tertiary); }
+.tx-row .amt{ font-weight:700; font-size:13.5px; font-family:var(--font-mono); flex-shrink:0; }
+.amt.pos{ color:var(--success); }
+.amt.neg{ color:var(--text-secondary); }
+
+/* ==========================================================================
+   PROFILE
+   ========================================================================== */
+.profile-cover{ height:120px; background:var(--accent-grad-soft); position:relative; }
+.profile-main{ padding:0 20px; margin-top:-46px; }
+.profile-main .avatar{ width:92px; height:92px; border-width:4px; }
+.profile-name-row{ display:flex; align-items:center; gap:8px; margin-top:12px; min-width:0; }
+.profile-name-row h2{ font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.level-badge{ font-size:10.5px; font-weight:700; background:var(--accent-grad); padding:3px 9px; border-radius:var(--radius-pill); color:#fff; flex-shrink:0; }
+.profile-username{ color:var(--text-secondary); font-size:13.5px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.profile-bio{ font-size:13.5px; color:var(--text-secondary); margin:12px 0; line-height:1.6; }
+.profile-country{ font-size:12.5px; color:var(--text-tertiary); margin-bottom:16px; }
+.profile-stats{ display:flex; gap:26px; margin-bottom:18px; }
+.profile-stats .stat b{ display:block; font-size:17px; font-family:var(--font-display); }
+.profile-stats .stat span{ font-size:11.5px; color:var(--text-secondary); }
+.profile-btn-row{ display:flex; gap:10px; margin-bottom:20px; }
+.profile-btn-row .btn{ flex:1; }
+.badge-row{ display:flex; gap:10px; padding:0 20px 18px; overflow-x:auto; }
+.badge-pill{ flex-shrink:0; display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:var(--radius-pill); background:var(--surface-glass); border:1px solid var(--border-glass); font-size:12px; font-weight:600; }
+.tab-row{ display:flex; border-bottom:1px solid var(--border-glass); padding:0 20px; }
+.tab-item{ padding:13px 16px; font-size:13.5px; font-weight:600; color:var(--text-tertiary); border-bottom:2px solid transparent; }
+.tab-item.active{ color:var(--text-primary); border-color:var(--accent-2); }
+.tab-panel{ padding:18px 20px; display:none; }
+.tab-panel.active{ display:block; }
+.posts-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+.posts-grid .post-tile{ aspect-ratio:1; border-radius:var(--radius-sm); }
+.gifts-received-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.gifts-received-grid .g{ text-align:center; padding:12px 6px; border-radius:var(--radius-md); background:var(--surface-glass); }
+.gifts-received-grid .emoji{ font-size:24px; }
+.gifts-received-grid .cnt{ font-size:11px; color:var(--text-secondary); margin-top:4px; }
+.achieve-row{ display:flex; align-items:center; gap:12px; padding:12px 0; }
+.achieve-row .ic{ width:42px; height:42px; border-radius:var(--radius-sm); background:var(--surface-glass); display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+.achieve-row .t{ font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px; }
+.achieve-row .d{ font-size:11.5px; color:var(--text-tertiary); }
+
+/* ==========================================================================
+   MESSAGES
+   ========================================================================== */
+.msg-list-row{ display:flex; align-items:center; gap:12px; padding:13px 18px; }
+.msg-list-row .avatar{ width:50px; height:50px; }
+.msg-list-row .meta{ flex:1; min-width:0; }
+.msg-list-row .meta .top{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; min-width:0; }
+.msg-list-row .meta .name{ font-weight:700; font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.msg-list-row .meta .time{ font-size:11px; color:var(--text-tertiary); flex-shrink:0; }
+.msg-list-row .meta .preview{ font-size:12.5px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px; }
+.msg-list-row.unread .preview{ color:var(--text-primary); font-weight:600; }
+.unread-dot{ width:9px; height:9px; border-radius:50%; background:var(--accent-2); flex-shrink:0; }
+
+.dm-body{ flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+.dm-msg{ max-width:75%; padding:11px 15px; border-radius:var(--radius-md); font-size:14px; line-height:1.5; }
+.dm-msg.them{ align-self:flex-start; background:var(--surface-glass-strong); border:1px solid var(--border-glass); border-bottom-left-radius:5px; }
+.dm-msg.me{ align-self:flex-end; background:var(--accent-grad); color:#fff; border-bottom-right-radius:5px; }
+.dm-time{ font-size:10px; color:var(--text-tertiary); margin-top:4px; }
+
+/* ==========================================================================
+   NOTIFICATIONS
+   ========================================================================== */
+.notif-row{ display:flex; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border-glass); }
+.notif-row .ic{ width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+.notif-row .t{ font-size:13.5px; line-height:1.5; }
+.notif-row .t b{ font-weight:700; }
+.notif-row .time{ font-size:11px; color:var(--text-tertiary); margin-top:3px; }
+.notif-row.unread{ background:rgba(183,33,255,0.05); }
+
+/* ==========================================================================
+   CREATE ROOM / SETTINGS
+   ========================================================================== */
+.form-wrap{ padding:20px 18px; }
+.form-wrap textarea{ min-height:80px; resize:none; font-size:14.5px; line-height:1.5; }
+.category-select{ display:flex; flex-wrap:wrap; gap:9px; }
+.privacy-toggle{ display:flex; gap:10px; }
+.privacy-opt{ flex:1; padding:16px; border-radius:var(--radius-md); background:var(--surface-glass); border:1.5px solid var(--border-glass); text-align:center; }
+.privacy-opt.active{ border-color:var(--accent-1); background:var(--accent-grad-soft); }
+.privacy-opt .ic{ font-size:20px; margin-bottom:6px; }
+.privacy-opt .t{ font-size:13px; font-weight:600; }
+.privacy-opt .d{ font-size:10.5px; color:var(--text-tertiary); margin-top:2px; }
+.image-picker{ height:130px; border-radius:var(--radius-lg); border:1.5px dashed var(--border-glass-strong); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:var(--text-secondary); font-size:13px; margin-bottom:16px; }
+.image-picker .ic{ font-size:26px; }
+
+.settings-group{ padding:8px 0 18px; }
+.settings-group .group-title{ font-size:11.5px; color:var(--text-tertiary); font-weight:700; letter-spacing:.5px; text-transform:uppercase; padding:0 20px 8px; }
+.settings-row{ display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border-glass); }
+.settings-row .left{ display:flex; align-items:center; gap:12px; }
+.settings-row .ic{ width:34px; height:34px; border-radius:10px; background:var(--surface-glass); display:flex; align-items:center; justify-content:center; font-size:15px; }
+.settings-row .label{ font-size:14px; font-weight:500; }
+.settings-row .chev{ color:var(--text-tertiary); }
+.switch{ width:44px; height:26px; border-radius:13px; background:var(--border-glass-strong); position:relative; transition:background .2s; flex-shrink:0; }
+.switch.on{ background:var(--accent-grad); }
+.switch::after{ content:''; position:absolute; width:20px; height:20px; border-radius:50%; background:#fff; top:3px; left:3px; transition:left .2s; }
+.switch.on::after{ left:21px; }
+.settings-row.danger .label{ color:var(--danger); }
+
+/* Confirm modal */
+.confirm-box{ text-align:center; padding:6px 4px 4px; }
+.confirm-box .ic{ font-size:34px; margin-bottom:10px; }
+.confirm-box h3{ font-size:17px; margin-bottom:8px; }
+.confirm-box p{ font-size:13.5px; color:var(--text-secondary); margin-bottom:22px; line-height:1.5; }
+.confirm-actions{ display:flex; gap:10px; }
+.confirm-actions .btn{ flex:1; }
+
+/* ==========================================================================
+   RESPONSIVE (responsive.css region)
+   ========================================================================== */
+@media (min-width: 720px){
+  .room-grid{ grid-template-columns:1fr 1fr; }
+  .package-grid{ grid-template-columns:repeat(4,1fr); }
+}
+
+@media (min-width: 1080px){
+  :root{ --nav-h:0px; }
+  .bottom-nav{ display:none; }
+  #app-shell{ padding-bottom:0; }
+  .desktop-layout{ display:grid; grid-template-columns:250px 1fr 300px; min-height:100vh; align-items:start; }
+  .desktop-sidebar{ position:sticky; top:0; height:100vh; padding:24px 14px; border-right:1px solid var(--border-glass); display:flex; flex-direction:column; gap:6px; }
+  .desktop-sidebar .brand-mini{ padding:0 12px; margin-bottom:26px; }
+  .side-link{ display:flex; align-items:center; gap:14px; padding:13px 14px; border-radius:var(--radius-md); font-weight:600; font-size:14.5px; color:var(--text-secondary); }
+  .side-link .ic{ font-size:18px; }
+  .side-link.active{ background:var(--surface-glass); color:var(--text-primary); }
+  .side-link.active .ic{ color:var(--accent-2); }
+  .desktop-main{ min-width:0; padding-bottom:40px; }
+  .desktop-right{ position:sticky; top:0; height:100vh; overflow-y:auto; padding:24px 18px; border-left:1px solid var(--border-glass); }
+  .desktop-right h3{ font-size:14px; margin-bottom:14px; color:var(--text-secondary); }
+  .online-user-row{ display:flex; align-items:center; gap:10px; padding:9px 0; }
+  .online-user-row .avatar{ width:38px; height:38px; }
+  .online-user-row .n{ font-size:13.5px; font-weight:600; }
+  .online-user-row .s{ font-size:11px; color:var(--success); }
+  .desktop-hide{ display:none; }
+  .topbar{ padding-top:22px; }
+  .room-grid{ grid-template-columns:1fr 1fr 1fr; }
+}
+@media (min-width:1080px) and (max-width:1339px){
+  .desktop-layout{ grid-template-columns:220px 1fr; }
+  .desktop-right{ display:none; }
+}
+</style>
+</head>
+<body>
+
+<div id="toast-stack"></div>
+<div class="gift-anim-layer" id="gift-anim-layer"></div>
+
+<div id="app">
+
+  <!-- ============================= SPLASH ============================= -->
+  <div id="screen-splash">
+    <div class="splash-logo">V</div>
+    <div class="splash-name h1 gradient-text">VIBRA</div>
+    <div class="splash-tag">
+      <span>Connect.</span> <span>Talk.</span> <span>Belong.</span>
+    </div>
+    <div class="splash-loader"></div>
+  </div>
+
+  <!-- ============================= AUTH: LOGIN ============================= -->
+  <div id="screen-login" class="auth-screen hidden">
+    <div class="auth-brand"><div class="mark">V</div><div class="name">VIBRA</div></div>
+    <div class="auth-head">
+      <h1 class="h1">Welcome back</h1>
+      <p>Log in to jump back into your rooms.</p>
+    </div>
+    <div class="success-banner" id="login-success">Account created — log in to continue.</div>
+    <form id="login-form" novalidate>
+      <div class="field" id="login-id-field">
+        <label>Email or username</label>
+        <div class="input-wrap"><span class="input-icon">✉️</span><input type="text" id="login-id" placeholder="you@example.com"></div>
+        <div class="field-error">Enter your email or username</div>
+      </div>
+      <div class="field" id="login-pw-field">
+        <label>Password</label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input type="password" id="login-pw" placeholder="••••••••">
+          <button type="button" class="pw-toggle" data-target="login-pw">👁️</button>
+        </div>
+        <div class="field-error">Password is required</div>
+      </div>
+      <div class="auth-links">
+        <button type="button" id="guest-btn">Continue as guest</button>
+        <button type="button" id="forgot-btn">Forgot password?</button>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Log In</button>
+    </form>
+    <div class="divider">or continue with</div>
+    <div class="social-row">
+      <button class="btn btn-glass btn-block" id="google-btn">🔵 Continue with Google</button>
+      <button class="btn btn-glass btn-block" id="apple-btn"> Continue with Apple</button>
+    </div>
+    <div class="auth-switch">New to Vibra? <button id="go-signup">Create an account</button></div>
+  </div>
+
+  <!-- ============================= AUTH: SIGNUP ============================= -->
+  <div id="screen-signup" class="auth-screen hidden">
+    <div class="auth-brand"><div class="mark">V</div><div class="name">VIBRA</div></div>
+    <div class="auth-head">
+      <h1 class="h1">Create account</h1>
+      <p>Join thousands vibing in live rooms right now.</p>
+    </div>
+    <form id="signup-form" novalidate>
+      <div class="field" id="su-name-field">
+        <label>Full name</label>
+        <div class="input-wrap"><span class="input-icon">🧑</span><input type="text" id="su-name" placeholder="Sahil Menon"></div>
+        <div class="field-error">Full name is required</div>
+      </div>
+      <div class="field" id="su-username-field">
+        <label>Username</label>
+        <div class="input-wrap"><span class="input-icon">@</span><input type="text" id="su-username" placeholder="sahilm"></div>
+        <div class="field-error">Choose a username (min 3 characters)</div>
+      </div>
+      <div class="field" id="su-email-field">
+        <label>Email</label>
+        <div class="input-wrap"><span class="input-icon">✉️</span><input type="email" id="su-email" placeholder="you@example.com"></div>
+        <div class="field-error">Enter a valid email</div>
+      </div>
+      <div class="field" id="su-dob-field">
+        <label>Date of birth</label>
+        <div class="input-wrap"><span class="input-icon">🎂</span><input type="date" id="su-dob"></div>
+        <div class="field-error">Date of birth is required</div>
+      </div>
+      <div class="field" id="su-pw-field">
+        <label>Password</label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span><input type="password" id="su-pw" placeholder="min 6 characters">
+          <button type="button" class="pw-toggle" data-target="su-pw">👁️</button>
+        </div>
+        <div class="field-error">Password must be at least 6 characters</div>
+      </div>
+      <div class="field" id="su-pw2-field">
+        <label>Confirm password</label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span><input type="password" id="su-pw2" placeholder="repeat password">
+          <button type="button" class="pw-toggle" data-target="su-pw2">👁️</button>
+        </div>
+        <div class="field-error">Passwords do not match</div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px;">Create Account</button>
+    </form>
+    <div class="auth-switch">Already have an account? <button id="go-login">Log in</button></div>
+  </div>
+
+  <!-- ============================= APP SHELL ============================= -->
+  <div id="app-shell">
+    <div class="desktop-layout">
+
+      <!-- Desktop sidebar -->
+      <div class="desktop-sidebar desktop-hide-mobile" style="display:none;" id="desktop-sidebar">
+        <div class="brand-mini"><div class="mark">V</div><div class="name">VIBRA</div></div>
+        <a class="side-link active" data-nav="home"><span class="ic">🏠</span>Home</a>
+        <a class="side-link" data-nav="discover"><span class="ic">🔍</span>Discover</a>
+        <a class="side-link" data-nav="create"><span class="ic">➕</span>Create Room</a>
+        <a class="side-link" data-nav="messages"><span class="ic">💬</span>Messages</a>
+        <a class="side-link" data-nav="profile"><span class="ic">👤</span>Profile</a>
+        <a class="side-link" id="side-wallet"><span class="ic">🪙</span>Wallet</a>
+        <a class="side-link" id="side-settings"><span class="ic">⚙️</span>Settings</a>
+      </div>
+
+      <div class="desktop-main">
+
+        <!-- ---------------- HOME TAB ---------------- -->
+        <div id="tab-home" class="app-tab">
+          <div class="topbar">
+            <div class="topbar-row">
+              <div class="brand-mini"><div class="mark">V</div><div class="name">VIBRA</div></div>
+              <div class="topbar-actions">
+                <button class="icon-btn" id="open-notifications" aria-label="Notifications">🔔<span class="badge" id="notif-badge">3</span></button>
+                <button class="icon-btn" id="open-wallet-mini" aria-label="Wallet">🪙</button>
+                <button class="icon-btn" id="open-profile-mini" aria-label="Your profile" style="padding:0;overflow:hidden;"><img class="avatar" style="width:100%;height:100%;" src="" id="mini-avatar" alt=""></button>
+              </div>
+            </div>
+            <div class="greeting" id="home-greeting">Good evening<span id="home-username-sub">Welcome to Vibra</span></div>
+            <div class="search-bar glass" style="border-radius:var(--radius-md);">
+              <span>🔍</span>
+              <input type="text" id="room-search" placeholder="Search rooms, topics, hosts...">
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head"><h2>Active now</h2></div>
+            <div class="hscroll" id="stories-row"></div>
+          </div>
+
+          <div class="section">
+            <div class="chip-row" id="category-row"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-head"><h2>🔥 Trending Chatrooms</h2></div>
+            <div class="room-grid" id="trending-rooms"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-head"><h2>✨ Recommended for you</h2><span class="see-all" data-nav="discover">See all</span></div>
+            <div id="recommended-rooms"></div>
+          </div>
+        </div>
+
+        <!-- ---------------- DISCOVER TAB ---------------- -->
+        <div id="tab-discover" class="app-tab hidden">
+          <div class="topbar">
+            <div class="topbar-row">
+              <div class="greeting" style="margin-bottom:0;">Discover</div>
+              <button class="icon-btn" id="open-notifications-2" aria-label="Notifications">🔔</button>
+            </div>
+            <div class="search-bar glass" style="border-radius:var(--radius-md); margin-top:14px;">
+              <span>🔍</span><input type="text" id="discover-search" placeholder="Find your next room...">
+            </div>
+          </div>
+          <div class="chip-row" id="discover-filter-row" style="padding-top:6px;"></div>
+          <div class="section"><div class="section-head"><h2>Popular Rooms</h2></div><div id="popular-list"></div></div>
+          <div class="section"><div class="section-head"><h2>New Rooms</h2></div><div id="new-list"></div></div>
+          <div class="section"><div class="section-head"><h2>Most Active</h2></div><div id="active-list"></div></div>
+        </div>
+
+        <!-- ---------------- CREATE TAB (placeholder redirect handled via JS) --- -->
+        <div id="tab-create" class="app-tab hidden"></div>
+
+        <!-- ---------------- MESSAGES TAB ---------------- -->
+        <div id="tab-messages" class="app-tab hidden">
+          <div class="topbar">
+            <div class="topbar-row"><div class="greeting" style="margin-bottom:0;">Messages</div></div>
+            <div class="search-bar glass" style="border-radius:var(--radius-md); margin-top:14px;">
+              <span>🔍</span><input type="text" id="messages-search" placeholder="Search messages...">
+            </div>
+          </div>
+          <div id="messages-list"></div>
+          <div id="messages-empty" class="hidden"></div>
+        </div>
+
+        <!-- ---------------- PROFILE TAB (self) ---------------- -->
+        <div id="tab-profile" class="app-tab hidden">
+          <div class="topbar" style="padding-bottom:0;">
+            <div class="topbar-row"><div class="greeting" style="margin-bottom:0;">Profile</div>
+              <button class="icon-btn" id="open-settings" aria-label="Settings">⚙️</button>
+            </div>
+          </div>
+          <div id="profile-render-target"></div>
+        </div>
+
+      </div><!-- /desktop-main -->
+
+      <!-- Desktop right rail -->
+      <div class="desktop-right desktop-hide" id="desktop-right">
+        <h3>ONLINE USERS</h3>
+        <div id="online-users-rail"></div>
+      </div>
+
+    </div><!-- /desktop-layout -->
+
+    <!-- Bottom nav (mobile) -->
+    <div class="bottom-nav">
+      <div class="nav-item active" data-nav="home"><span class="ic">🏠</span>Home</div>
+      <div class="nav-item" data-nav="discover"><span class="ic">🔍</span>Discover</div>
+      <div class="nav-item create" data-nav="create"><span class="ic">➕</span></div>
+      <div class="nav-item" data-nav="messages"><span class="ic">💬</span>Messages</div>
+      <div class="nav-item" data-nav="profile"><span class="ic">👤</span>Profile</div>
+    </div>
+  </div><!-- /app-shell -->
+
+  <!-- ============================= OVERLAY: ROOM / CHAT ============================= -->
+  <div class="overlay-screen" id="screen-room">
+    <div class="ov-header">
+      <button class="back-btn" id="room-back" aria-label="Leave room">←</button>
+      <div class="title-block">
+        <h2 id="room-title">Room</h2>
+        <div class="sub" id="room-online-count">0 online</div>
+      </div>
+      <button class="icon-btn" id="room-share" aria-label="Share room">🔗</button>
+      <button class="icon-btn" id="room-more" aria-label="Room options">⋮</button>
+    </div>
+    <div class="ov-body" style="display:flex; flex-direction:column; padding:0; overflow:hidden; position:relative;">
+      <div class="voice-area">
+        <div class="host-block">
+          <div class="vibra-ring" id="host-ring"><img class="avatar" id="host-avatar" src="" alt=""></div>
+          <div class="role">👑 HOST</div>
+          <div class="uname" id="host-name">Host</div>
+        </div>
+        <div class="mic-grid" id="mic-grid"></div>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <button class="scroll-bottom-fab" id="scroll-bottom-fab"><span class="dot"></span>New messages</button>
+    </div>
+    <div style="position:relative;">
+      <div class="reply-preview" id="reply-preview">
+        <div class="bar"></div>
+        <div class="body"><span class="who" id="reply-who"></span><div class="snip" id="reply-snip"></div></div>
+        <button class="close" id="reply-cancel">✕</button>
+      </div>
+      <div class="emoji-picker" id="emoji-picker"></div>
+      <div class="mention-suggestions" id="mention-suggestions"></div>
+      <div class="chat-input-bar">
+        <button class="icon-btn" id="emoji-toggle" aria-label="Open emoji picker">😊</button>
+        <div class="input-wrap"><input type="text" id="chat-input" placeholder="Say something nice..." maxlength="200"></div>
+        <span class="char-counter" id="chat-char-counter">0/200</span>
+        <button class="icon-btn" id="gift-open-btn" aria-label="Send a gift">🎁</button>
+        <button class="send-btn" id="chat-send">➤</button>
+      </div>
+      <div class="voice-controls">
+        <button type="button" class="vc-btn" id="vc-mic"><span class="ic">🎤</span>Mic</button>
+        <button type="button" class="vc-btn" id="vc-speaker"><span class="ic">🔊</span>Speaker</button>
+        <button type="button" class="vc-btn" id="vc-gift"><span class="ic">🎁</span>Gift</button>
+        <button type="button" class="vc-btn" id="vc-hand"><span class="ic">✋</span><span id="vc-hand-label">Raise</span></button>
+        <button type="button" class="vc-btn" id="vc-participants"><span class="ic">👥</span>People</button>
+        <button type="button" class="vc-btn leave" id="vc-leave"><span class="ic">✕</span>Leave</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= OVERLAY: WALLET ============================= -->
+  <div class="overlay-screen" id="screen-wallet">
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-wallet">←</button><div class="title-block"><h2>Wallet</h2></div></div>
+    <div class="ov-body">
+      <div class="wallet-hero"><div class="label">Current Balance</div><div class="balance">🪙 <span id="wallet-balance">0</span> Coins</div></div>
+      <div class="wallet-actions">
+        <button class="btn btn-primary" id="buy-coins-btn">Buy Coins</button>
+        <button class="btn btn-glass" id="tx-history-btn">Transaction History</button>
+      </div>
+      <div class="section-head" style="margin-top:8px;"><h2>Coin Packages</h2></div>
+      <div class="package-grid" id="package-grid"></div>
+      <div id="tx-history-section" class="hidden">
+        <div class="section-head"><h2>Transaction History</h2></div>
+        <div id="tx-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= OVERLAY: PROFILE (other users) ============================= -->
+  <div class="overlay-screen" id="screen-user-profile">
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-user-profile">←</button><div class="title-block"><h2>Profile</h2></div><button class="icon-btn" id="share-profile-btn" aria-label="Share profile">🔗</button></div>
+    <div class="ov-body" id="user-profile-target"></div>
+  </div>
+
+  <!-- ============================= OVERLAY: DIRECT MESSAGE ============================= -->
+  <div class="overlay-screen" id="screen-dm">
+    <div class="ov-header">
+      <button class="back-btn" aria-label="Back" data-close-overlay="screen-dm">←</button>
+      <div class="vibra-ring"><img class="avatar" id="dm-avatar" style="width:38px;height:38px;" src="" alt=""></div>
+      <div class="title-block"><h2 id="dm-name">User</h2><div class="sub" id="dm-status">Online</div></div>
+    </div>
+    <div class="dm-body" id="dm-body"></div>
+    <div style="position:relative;">
+      <div class="emoji-picker" id="dm-emoji-picker"></div>
+      <div class="chat-input-bar">
+        <button class="icon-btn" id="dm-emoji-toggle" aria-label="Open emoji picker">😊</button>
+        <div class="input-wrap"><input type="text" id="dm-input" placeholder="Type a message..." maxlength="300"></div>
+        <button class="send-btn" id="dm-send">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= OVERLAY: NOTIFICATIONS ============================= -->
+  <div class="overlay-screen" id="screen-notifications">
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-notifications">←</button><div class="title-block"><h2>Notifications</h2></div></div>
+    <div class="ov-body" id="notifications-list"></div>
+  </div>
+
+  <!-- ============================= OVERLAY: CREATE ROOM ============================= -->
+  <div class="overlay-screen" id="screen-create-room">
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-create-room">←</button><div class="title-block"><h2>Create Room</h2></div></div>
+    <div class="ov-body">
+      <form class="form-wrap" id="create-room-form">
+        <div class="image-picker" id="cr-image-picker"><span class="ic">🖼️</span>Add a cover image</div>
+        <div class="field"><label>Room name</label><div class="input-wrap"><input type="text" id="cr-name" placeholder="e.g. Midnight Music Room" maxlength="40"></div></div>
+        <div class="field"><label>Description</label><div class="input-wrap"><textarea id="cr-desc" placeholder="What's this room about?" maxlength="140"></textarea></div></div>
+        <div class="field"><label>Category</label><div class="category-select" id="cr-category"></div></div>
+        <div class="field"><label>Privacy</label>
+          <div class="privacy-toggle">
+            <div class="privacy-opt active" data-privacy="public"><div class="ic">🌍</div><div class="t">Public</div><div class="d">Anyone can join</div></div>
+            <div class="privacy-opt" data-privacy="private"><div class="ic">🔒</div><div class="t">Private</div><div class="d">Invite only</div></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button type="button" class="btn btn-glass" style="flex:1;" data-close-overlay="screen-create-room">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="flex:1.4;">Create Room</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================= OVERLAY: SETTINGS ============================= -->
+  <div class="overlay-screen" id="screen-settings">
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-settings">←</button><div class="title-block"><h2>Settings</h2></div></div>
+    <div class="ov-body">
+      <div class="settings-group">
+        <div class="group-title">Account</div>
+        <div class="settings-row"><div class="left"><div class="ic">🧑</div><div class="label">Edit profile</div></div><div class="chev">›</div></div>
+        <div class="settings-row"><div class="left"><div class="ic">🔐</div><div class="label">Account settings</div></div><div class="chev">›</div></div>
+        <div class="settings-row"><div class="left"><div class="ic">🛡️</div><div class="label">Privacy settings</div></div><div class="chev">›</div></div>
+      </div>
+      <div class="settings-group">
+        <div class="group-title">Preferences</div>
+        <div class="settings-row"><div class="left"><div class="ic">🔔</div><div class="label">Notifications</div></div><div class="switch on" id="toggle-notif"></div></div>
+        <div class="settings-row"><div class="left"><div class="ic">🌐</div><div class="label">Language</div></div><div class="chev">English ›</div></div>
+        <div class="settings-row"><div class="left"><div class="ic">🌙</div><div class="label">Dark mode</div></div><div class="switch on" id="toggle-dark"></div></div>
+      </div>
+      <div class="settings-group">
+        <div class="group-title">Support</div>
+        <div class="settings-row"><div class="left"><div class="ic">❓</div><div class="label">Help center</div></div><div class="chev">›</div></div>
+      </div>
+      <div class="settings-group">
+        <div class="settings-row danger" id="logout-btn"><div class="left"><div class="ic">🚪</div><div class="label">Logout</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= MODALS ============================= -->
+  <div class="modal-backdrop" id="gift-modal">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Send a gift <button class="icon-btn" aria-label="Close" data-close-modal="gift-modal">✕</button></div>
+      <div class="gift-recipient"><img class="avatar" id="gift-recipient-avatar" src="" style="width:34px;height:34px;flex-shrink:0;" alt=""><div style="min-width:0;"><div style="font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Sending to <span id="gift-recipient-name">Host</span></div><div style="font-size:11.5px; color:var(--text-secondary);" class="mono">🪙 <span id="gift-modal-balance">0</span> available</div></div></div>
+      <div class="gift-grid" id="gift-grid"></div>
+      <button class="btn btn-primary btn-block" id="gift-send-btn" style="margin-top:6px;">Send Gift</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="participants-modal">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Participants <button class="icon-btn" aria-label="Close" data-close-modal="participants-modal">✕</button></div>
+      <div id="participants-list"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="seat-profile-modal">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Profile <button class="icon-btn" aria-label="Close" data-close-modal="seat-profile-modal">✕</button></div>
+      <div class="seat-profile-head">
+        <img class="avatar" id="seat-profile-avatar" src="" style="width:74px;height:74px;" alt="">
+        <div class="name-row"><span id="seat-profile-name">Name</span><span class="level-badge" id="seat-profile-level">Lv 1</span></div>
+        <div class="sub" id="seat-profile-sub">🎙️ On mic</div>
+      </div>
+      <div class="seat-profile-actions" id="seat-profile-actions"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="requests-modal">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Mic requests <button class="icon-btn" aria-label="Close" data-close-modal="requests-modal">✕</button></div>
+      <div id="requests-list"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="room-more-modal">
+    <div class="modal-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Room options <button class="icon-btn" aria-label="Close" data-close-modal="room-more-modal">✕</button></div>
+      <div id="room-more-list"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop center-align" id="logout-modal">
+    <div class="modal-sheet center">
+      <div class="confirm-box">
+        <div class="ic">🚪</div>
+        <h3>Log out of Vibra?</h3>
+        <p>You'll need to sign in again to rejoin your rooms and chats.</p>
+        <div class="confirm-actions">
+          <button class="btn btn-glass" data-close-modal="logout-modal">Cancel</button>
+          <button class="btn btn-danger" id="confirm-logout">Log Out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop center-align" id="payment-modal">
+    <div class="modal-sheet center">
+      <div class="confirm-box">
+        <div class="ic" id="payment-icon">💳</div>
+        <h3 id="payment-title">Confirm purchase</h3>
+        <p id="payment-desc">Buy 500 Coins for ₹399?</p>
+        <div class="confirm-actions">
+          <button class="btn btn-glass" data-close-modal="payment-modal">Cancel</button>
+          <button class="btn btn-primary" id="confirm-payment">Pay Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script>
+/* ==========================================================================
+   DATA MODULE  (maps to js/data.js)
+   Mock data: users, rooms, messages, gifts, categories, notifications
+   ========================================================================== */
+const DATA = (function(){
+
+  function avatarFor(seed, size){
+    size = size || 100;
+    return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(seed)}&backgroundColor=1B1826,14121F,201C2E`;
+  }
+  function roomThumb(seed){
+    return `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(seed)}`;
+  }
+
+  const gradients = [
+    'linear-gradient(135deg,#7C3AED,#EC4899)',
+    'linear-gradient(135deg,#0EA5E9,#22D3EE)',
+    'linear-gradient(135deg,#F59E0B,#EF4444)',
+    'linear-gradient(135deg,#10B981,#22D3EE)',
+    'linear-gradient(135deg,#8B5CF6,#3B82F6)',
+    'linear-gradient(135deg,#EC4899,#F59E0B)',
+    'linear-gradient(135deg,#6366F1,#EC4899)',
+    'linear-gradient(135deg,#14B8A6,#6366F1)'
+  ];
+
+  const users = [
+    {id:'u1', name:'Aisha Rahman', username:'aisha', bio:'Late night talker 🌙 | Music lover | Kochi', country:'India 🇮🇳', followers:2840, following:312, level:14, online:true},
+    {id:'u2', name:'Rahul Verma', username:'rahulv', bio:'Gamer. Streamer. Chai enthusiast ☕', country:'India 🇮🇳', followers:5210, following:180, level:22, online:true},
+    {id:'u3', name:'Sara Thomas', username:'sarat', bio:'Host of Chill Zone every night 🎧', country:'India 🇮🇳', followers:9840, following:95, level:31, online:true},
+    {id:'u4', name:'Vikram Nair', username:'vikramn', bio:'Malayalam vibes only 🌴', country:'India 🇮🇳', followers:1560, following:410, level:9, online:false},
+    {id:'u5', name:'Priya Iyer', username:'priyai', bio:'Global friends, one room at a time 🌍', country:'India 🇮🇳', followers:3320, following:266, level:17, online:true},
+    {id:'u6', name:'Karan Mehta', username:'karanm', bio:'DJ | Producer | Music Lounge regular', country:'India 🇮🇳', followers:7460, following:120, level:26, online:true},
+    {id:'u7', name:'Neha Pillai', username:'nehap', bio:'Just here to vibe ✨', country:'India 🇮🇳', followers:940, following:530, level:6, online:false},
+    {id:'u8', name:'Arjun Das', username:'arjund', bio:'Gaming Arena host 🎮', country:'India 🇮🇳', followers:4120, following:88, level:19, online:true},
+  ];
+  users.forEach(u=> u.avatar = avatarFor(u.username));
+
+  const categories = ['All','Trending','Music','Gaming','Talk','Language','Friends','Entertainment'];
+
+  const rooms = [
+    {id:'r1', name:'Late Night Talks', category:'Talk', desc:'Deep 2AM conversations with strangers who feel like friends.', hostId:'u1', online:1245, live:true, grad:gradients[0]},
+    {id:'r2', name:'Music Lounge', category:'Music', desc:'Live requests, chill beats, and open mic every hour.', hostId:'u6', online:2130, live:true, grad:gradients[1]},
+    {id:'r3', name:'Gaming Arena', category:'Gaming', desc:'Valorant squads forming now — drop in and play.', hostId:'u8', online:980, live:true, grad:gradients[2]},
+    {id:'r4', name:'Malayalam Vibes', category:'Language', desc:'Nadan chats, music and memes in Malayalam 🌴', hostId:'u4', online:640, live:true, grad:gradients[3]},
+    {id:'r5', name:'Global Friends', category:'Friends', desc:'Meet people from 40+ countries. English spoken here.', hostId:'u5', online:1870, live:true, grad:gradients[4]},
+    {id:'r6', name:'Chill Zone', category:'Entertainment', desc:'Lo-fi, movies talk, and comfortable silence.', hostId:'u3', online:1420, live:true, grad:gradients[5]},
+    {id:'r7', name:'Startup Grind', category:'Talk', desc:'Founders and builders trading war stories.', hostId:'u2', online:310, live:false, grad:gradients[6]},
+    {id:'r8', name:'K-Pop Central', category:'Music', desc:'Comeback reactions and bias wars every night.', hostId:'u7', online:2650, live:true, grad:gradients[7]},
+  ];
+  rooms.forEach(r=> r.thumb = roomThumb(r.id));
+
+  function participantsFor(roomId, count){
+    const out = [];
+    for(let i=0;i<count;i++){
+      const src = users[(i+roomId.charCodeAt(1))%users.length];
+      out.push({
+        id: src.id+'-'+roomId+'-'+i,
+        srcUserId: src.id,
+        name: src.name.split(' ')[0],
+        avatar: avatarFor(src.username+roomId+i),
+        level: src.level,
+        muted: (i%3===0),
+        speaking: false,
+        empty: (i>=count-2 && i%2===0),
+        giftsReceived: 0
+      });
+    }
+    if(out.length){ out[0].speaking = true; out[0].muted = false; }
+    return out;
+  }
+
+  const messagesSeed = {
+    r1: [
+      {who:'u1', text:'Hey everyone 👋 glad you could join tonight', system:false},
+      {who:'u4', text:"What's happening here?", system:false},
+      {who:'system', text:'Sara joined the room', system:true},
+      {who:'u1', text:'Welcome to the room! Grab a seat 🎤', system:false},
+    ],
+    r2: [
+      {who:'u6', text:'Requests open! Drop your song 🎶', system:false},
+      {who:'u5', text:'Play something lo-fi please', system:false},
+    ],
+    default: [
+      {who:'u2', text:'Yo, who else is here?', system:false},
+      {who:'system', text:'You joined the room', system:true},
+    ]
+  };
+
+  const giftCatalog = [
+    {id:'g1', emoji:'🌹', name:'Rose', cost:10},
+    {id:'g2', emoji:'❤️', name:'Heart', cost:50},
+    {id:'g3', emoji:'🎁', name:'Gift', cost:100},
+    {id:'g4', emoji:'👑', name:'Crown', cost:500},
+    {id:'g5', emoji:'🚀', name:'Rocket', cost:1000},
+    {id:'g6', emoji:'💎', name:'Diamond', cost:2000},
+  ];
+
+  const packages = [
+    {id:'p1', coins:100, price:99},
+    {id:'p2', coins:500, price:399, best:true},
+    {id:'p3', coins:1200, price:799},
+    {id:'p4', coins:5000, price:2999},
+  ];
+
+  const dmSeed = [
+    {id:'d1', userId:'u1', last:"Hey, how are you?", time:'2m', unread:true},
+    {id:'d2', userId:'u2', last:'Nice meeting you!', time:'10m', unread:true},
+    {id:'d3', userId:'u3', last:'Join our room!', time:'1h', unread:false},
+    {id:'d4', userId:'u5', last:'That was such a fun session 😄', time:'3h', unread:false},
+    {id:'d5', userId:'u8', last:'GG, same time tomorrow?', time:'1d', unread:false},
+  ];
+
+  const notifSeed = [
+    {id:'n1', type:'follow', text:'started following you', userId:'u1', time:'2 minutes ago', unread:true},
+    {id:'n2', type:'gift', text:'sent you a Rose', userId:'u2', time:'10 minutes ago', unread:true},
+    {id:'n3', type:'invite', text:'invited you to Music Lounge', userId:'u6', time:'25 minutes ago', unread:true},
+    {id:'n4', type:'message', text:'sent you a message', userId:'u3', time:'1 hour ago', unread:false},
+    {id:'n5', type:'system', text:'Your weekly Vibra recap is ready', userId:null, time:'5 hours ago', unread:false},
+  ];
+
+  function getUser(id){ return users.find(u=>u.id===id); }
+
+  return { avatarFor, roomThumb, gradients, users, categories, rooms, participantsFor, messagesSeed, giftCatalog, packages, dmSeed, notifSeed, getUser };
+})();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
