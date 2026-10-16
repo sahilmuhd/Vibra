@@ -6,7 +6,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config("DJANGO_SECRET_KEY")
 DEBUG = config("DEBUG", default=False, cast=bool)
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = [h.strip() for h in config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",") if h.strip()]
+# Render injects the service hostname automatically
+_render_host = config("RENDER_EXTERNAL_HOSTNAME", default="")
+if _render_host and _render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_host)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -51,7 +55,21 @@ TEMPLATES = [{
     ]},
 }]
 
-DATABASES = {
+_database_url = config("DATABASE_URL", default="")
+if _database_url:
+    # Render-style DATABASE_URL=postgres://user:pass@host:port/name
+    from urllib.parse import urlparse, unquote
+    _u = urlparse(_database_url)
+    DATABASES = {"default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": _u.path.lstrip("/"),
+        "USER": unquote(_u.username or ""),
+        "PASSWORD": unquote(_u.password or ""),
+        "HOST": _u.hostname,
+        "PORT": str(_u.port or 5432),
+    }}
+else:
+  DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": config("DB_NAME", default="vibra"),
@@ -60,7 +78,7 @@ DATABASES = {
         "HOST": config("DB_HOST", default="localhost"),
         "PORT": config("DB_PORT", default="5432"),
     }
-}
+  }
 
 CHANNEL_LAYERS = {
     "default": {
@@ -79,7 +97,7 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    origin for origin in config("CORS_ALLOWED_ORIGINS", default="").split(",") if origin
+    origin.strip() for origin in config("CORS_ALLOWED_ORIGINS", default="").split(",") if origin.strip()
 ]
 
 AUTH_PASSWORD_VALIDATORS = [

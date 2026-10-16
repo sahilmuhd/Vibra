@@ -1466,7 +1466,7 @@ function bindAuth(){
     const emailOk = /^\S+@\S+\.\S+$/.test(email);
     setFieldError('su-email-field', !emailOk); if(!emailOk) ok=false;
     setFieldError('su-dob-field', !dob); if(!dob) ok=false;
-    setFieldError('su-pw-field', pw.length<6); if(pw.length<6) ok=false;
+    setFieldError('su-pw-field', pw.length<8); if(pw.length<8) ok=false;
     setFieldError('su-pw2-field', pw!==pw2 || !pw2); if(pw!==pw2 || !pw2) ok=false;
     if(!ok) return;
 

@@ -4,12 +4,33 @@ from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Profile
 from .serializers import ProfileSerializer, SignupSerializer
 
 User = get_user_model()
+
+
+class LoginSerializer(TokenObtainPairSerializer):
+    """Accepts a username OR an email, case-insensitively (the login form says
+    "Email or username"; signup stores usernames lowercased)."""
+
+    def validate(self, attrs):
+        ident = (attrs.get(self.username_field) or "").strip()
+        user = (
+            User.objects.filter(username__iexact=ident).first()
+            or User.objects.filter(email__iexact=ident).first()
+        )
+        if user:
+            attrs[self.username_field] = user.get_username()
+        return super().validate(attrs)
+
+
+class LoginView(TokenObtainPairView):
+    serializer_class = LoginSerializer
 
 
 def tokens_for(user):
