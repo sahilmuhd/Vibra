@@ -81,6 +81,9 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     origin for origin in config("CORS_ALLOWED_ORIGINS", default="").split(",") if origin
 ]
+# In dev, also allow requests from file:// (origin=null) and any localhost port.
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
