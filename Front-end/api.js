@@ -197,7 +197,16 @@ const Api = {
     };
     return socket;
   },
+
+  // ---- Password reset ----
+  async requestPasswordReset(email) {
+    return this._req("/auth/password-reset/", "POST", { email }, false);
+  },
+  async resetPassword(token, newPassword) {
+    return this._req("/auth/password-reset/confirm/", "POST", { token, new_password: newPassword }, false);
+  },
 };
+
 
 /* ==========================================================================
    INTEGRATION NOTES — what to change in app.js

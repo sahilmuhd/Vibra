@@ -1229,6 +1229,78 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
     </div>
   </div><!-- /app-shell -->
 
+  <!-- ============================= FORGOT PASSWORD MODAL ============================= -->
+  <div class="modal-backdrop" id="forgot-modal">
+    <div class="modal-sheet center" style="max-width:420px;">
+      <div class="confirm-box" style="text-align:left; padding:0;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+          <div style="width:40px;height:40px;border-radius:12px;background:var(--accent-grad-soft);border:1px solid rgba(183,33,255,0.3);display:flex;align-items:center;justify-content:center;">
+            <i data-lucide="lock-keyhole" style="width:18px;height:18px;color:var(--accent-1);"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:16px;">Forgot password?</div>
+            <div style="font-size:12.5px;color:var(--text-secondary);">We'll send a reset link to your email</div>
+          </div>
+        </div>
+        <div class="field" id="forgot-email-field">
+          <label>Email address</label>
+          <div class="input-wrap">
+            <span class="input-icon"><i data-lucide="mail"></i></span>
+            <input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email">
+          </div>
+          <div class="field-error" id="forgot-email-error">Enter a valid email</div>
+        </div>
+        <div id="forgot-success-msg" class="success-banner" style="display:none;margin-bottom:0;">
+          Check your inbox — a reset link has been sent!
+        </div>
+        <div class="confirm-actions" style="margin-top:18px;">
+          <button class="btn btn-glass" id="forgot-cancel-btn">Cancel</button>
+          <button class="btn btn-primary" id="forgot-submit-btn">Send Reset Link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= RESET PASSWORD MODAL ============================= -->
+  <div class="modal-backdrop" id="reset-modal">
+    <div class="modal-sheet center" style="max-width:420px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:var(--accent-grad-soft);border:1px solid rgba(183,33,255,0.3);display:flex;align-items:center;justify-content:center;">
+          <i data-lucide="key-round" style="width:18px;height:18px;color:var(--accent-1);"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:16px;">Set new password</div>
+          <div style="font-size:12.5px;color:var(--text-secondary);">Choose a strong password</div>
+        </div>
+      </div>
+      <div class="field" id="reset-pw-field">
+        <label>New password</label>
+        <div class="input-wrap">
+          <span class="input-icon"><i data-lucide="lock"></i></span>
+          <input type="password" id="reset-pw" placeholder="min 8 characters" autocomplete="new-password">
+          <button type="button" class="pw-toggle" data-target="reset-pw"><i data-lucide="eye"></i></button>
+        </div>
+        <div class="field-error" id="reset-pw-error">Password must be at least 8 characters</div>
+      </div>
+      <div class="field" id="reset-pw2-field">
+        <label>Confirm password</label>
+        <div class="input-wrap">
+          <span class="input-icon"><i data-lucide="lock"></i></span>
+          <input type="password" id="reset-pw2" placeholder="repeat password" autocomplete="new-password">
+          <button type="button" class="pw-toggle" data-target="reset-pw2"><i data-lucide="eye"></i></button>
+        </div>
+        <div class="field-error" id="reset-pw2-error">Passwords do not match</div>
+      </div>
+      <div id="reset-success-msg" class="success-banner" style="display:none;">
+        Password updated! You can now log in.
+      </div>
+      <div class="confirm-actions" style="margin-top:18px;">
+        <button class="btn btn-glass" id="reset-cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="reset-submit-btn">Update Password</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============================= OVERLAY: ROOM / CHAT ============================= -->
   <div class="overlay-screen" id="screen-room">
     <div class="ov-header">
