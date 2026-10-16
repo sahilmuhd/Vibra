@@ -1808,6 +1808,7 @@ function bindGlobalKeyboard(){
   });
 }
 
+
 function init(){
   initStorageDefaults();
   bindPasswordToggles();
@@ -1824,7 +1825,10 @@ function init(){
   bindOverlaysAndModals();
   bindGlobalKeyboard();
   renderDiscoverTab();
+  // Render all Lucide icons declared with data-lucide attributes
+  if(window.lucide){ lucide.createIcons(); }
   initSplash();
 }
 
 document.addEventListener('DOMContentLoaded', init);
+

@@ -116,8 +116,20 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .chat-input-bar, .voice-controls{ padding-bottom:calc(12px + env(safe-area-inset-bottom)); }
 #toast-stack{ top:calc(18px + env(safe-area-inset-top)); }
 
-/* Vibra signature: pulse ring — a concentric animated ring used for
-   speaking/live/online avatars everywhere in the app */
+/* Lucide icon sizing — applies globally everywhere we use data-lucide */
+.ic svg{ width:20px; height:20px; stroke:currentColor; display:block; }
+.icon-btn svg{ width:18px; height:18px; stroke:currentColor; }
+.side-link .ic svg{ width:20px; height:20px; stroke:currentColor; }
+.back-btn svg{ width:16px; height:16px; stroke:currentColor; }
+
+/* Icon-btn upgrade */
+.icon-btn{
+  position:relative; width:44px; height:44px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.09);
+  font-size:16px; color:var(--text-secondary); transition:background .15s, color .15s;
+}
+.icon-btn:hover{ background:rgba(255,255,255,0.09); color:var(--text-primary); }
 .vibra-ring{ position:relative; display:inline-flex; }
 .vibra-ring::before{
   content:''; position:absolute; inset:-6px; border-radius:50%;
@@ -296,8 +308,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .input-wrap input{ flex:1; min-width:0; font-size:15px; color:var(--text-primary); }
 .input-wrap input::placeholder{ color:rgba(255,255,255,0.22); }
-.input-icon{ opacity:.5; font-size:16px; flex-shrink:0; }
-.field-error{ color:var(--danger); font-size:12px; margin-top:6px; display:none; font-weight:500; }
+.input-icon{ opacity:.5; font-size:16px; flex-shrink:0; display:flex; align-items:center; }
+.input-icon svg{ width:17px; height:17px; stroke:currentColor; }
+.pw-toggle{ color:rgba(255,255,255,0.3); font-size:16px; transition:color .15s; padding:0 2px; flex-shrink:0; display:flex; align-items:center; }
+.pw-toggle svg{ width:17px; height:17px; }
+.pw-toggle:hover{ color:var(--text-primary); }
 .field.error .input-wrap{ border-color:var(--danger); box-shadow:0 0 0 3px rgba(255,92,108,0.1); }
 .field.error .field-error{ display:block; }
 
@@ -992,15 +1007,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       <form id="login-form" novalidate>
         <div class="field" id="login-id-field">
           <label>Username</label>
-          <div class="input-wrap"><span class="input-icon">👤</span><input type="text" id="login-id" placeholder="your_username" autocomplete="username"></div>
+          <div class="input-wrap"><span class="input-icon"><i data-lucide="user"></i></span><input type="text" id="login-id" placeholder="your_username" autocomplete="username"></div>
           <div class="field-error">Enter your username</div>
         </div>
         <div class="field" id="login-pw-field">
           <label>Password</label>
           <div class="input-wrap">
-            <span class="input-icon">🔒</span>
+            <span class="input-icon"><i data-lucide="lock"></i></span>
             <input type="password" id="login-pw" placeholder="••••••••" autocomplete="current-password">
-            <button type="button" class="pw-toggle" data-target="login-pw">👁️</button>
+            <button type="button" class="pw-toggle" data-target="login-pw"><i data-lucide="eye"></i></button>
           </div>
           <div class="field-error">Password is required</div>
         </div>
@@ -1012,8 +1027,22 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       </form>
       <div class="divider">or continue with</div>
       <div class="social-row">
-        <button class="btn btn-glass btn-block" id="google-btn">🔵 Continue with Google</button>
-        <button class="btn btn-glass btn-block" id="apple-btn"> Continue with Apple</button>
+        <button class="btn btn-glass btn-block" id="google-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Continue with Google
+        </button>
+        <button class="btn btn-glass btn-block" id="apple-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09z"/>
+            <path d="M15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701z"/>
+          </svg>
+          Continue with Apple
+        </button>
       </div>
       <div class="auth-switch">New to Vibra? <button id="go-signup">Create an account</button></div>
     </div>
@@ -1042,37 +1071,37 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       <form id="signup-form" novalidate>
         <div class="field" id="su-name-field">
           <label>Full name</label>
-          <div class="input-wrap"><span class="input-icon">🧑</span><input type="text" id="su-name" placeholder="Sahil Menon" autocomplete="name"></div>
+          <div class="input-wrap"><span class="input-icon"><i data-lucide="user"></i></span><input type="text" id="su-name" placeholder="Sahil Menon" autocomplete="name"></div>
           <div class="field-error">Full name is required</div>
         </div>
         <div class="field" id="su-username-field">
           <label>Username</label>
-          <div class="input-wrap"><span class="input-icon">@</span><input type="text" id="su-username" placeholder="sahilm" autocomplete="username"></div>
+          <div class="input-wrap"><span class="input-icon"><i data-lucide="at-sign"></i></span><input type="text" id="su-username" placeholder="sahilm" autocomplete="username"></div>
           <div class="field-error">Choose a username (min 3 characters)</div>
         </div>
         <div class="field" id="su-email-field">
           <label>Email</label>
-          <div class="input-wrap"><span class="input-icon">✉️</span><input type="email" id="su-email" placeholder="you@example.com" autocomplete="email"></div>
+          <div class="input-wrap"><span class="input-icon"><i data-lucide="mail"></i></span><input type="email" id="su-email" placeholder="you@example.com" autocomplete="email"></div>
           <div class="field-error">Enter a valid email</div>
         </div>
         <div class="field" id="su-dob-field">
           <label>Date of birth</label>
-          <div class="input-wrap"><span class="input-icon">🎂</span><input type="date" id="su-dob"></div>
+          <div class="input-wrap"><span class="input-icon"><i data-lucide="calendar"></i></span><input type="date" id="su-dob"></div>
           <div class="field-error">Date of birth is required</div>
         </div>
         <div class="field" id="su-pw-field">
           <label>Password</label>
           <div class="input-wrap">
-            <span class="input-icon">🔒</span><input type="password" id="su-pw" placeholder="min 8 characters" autocomplete="new-password">
-            <button type="button" class="pw-toggle" data-target="su-pw">👁️</button>
+            <span class="input-icon"><i data-lucide="lock"></i></span><input type="password" id="su-pw" placeholder="min 8 characters" autocomplete="new-password">
+            <button type="button" class="pw-toggle" data-target="su-pw"><i data-lucide="eye"></i></button>
           </div>
           <div class="field-error">Password must be at least 8 characters</div>
         </div>
         <div class="field" id="su-pw2-field">
           <label>Confirm password</label>
           <div class="input-wrap">
-            <span class="input-icon">🔒</span><input type="password" id="su-pw2" placeholder="repeat password" autocomplete="new-password">
-            <button type="button" class="pw-toggle" data-target="su-pw2">👁️</button>
+            <span class="input-icon"><i data-lucide="lock"></i></span><input type="password" id="su-pw2" placeholder="repeat password" autocomplete="new-password">
+            <button type="button" class="pw-toggle" data-target="su-pw2"><i data-lucide="eye"></i></button>
           </div>
           <div class="field-error">Passwords do not match</div>
         </div>
@@ -1089,13 +1118,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       <!-- Desktop sidebar -->
       <div class="desktop-sidebar desktop-hide-mobile" style="display:none;" id="desktop-sidebar">
         <div class="brand-mini"><div class="mark">V</div><div class="name">VIBRA</div></div>
-        <a class="side-link active" data-nav="home"><span class="ic">🏠</span>Home</a>
-        <a class="side-link" data-nav="discover"><span class="ic">🔍</span>Discover</a>
-        <a class="side-link" data-nav="create"><span class="ic">➕</span>Create Room</a>
-        <a class="side-link" data-nav="messages"><span class="ic">💬</span>Messages</a>
-        <a class="side-link" data-nav="profile"><span class="ic">👤</span>Profile</a>
-        <a class="side-link" id="side-wallet"><span class="ic">🪙</span>Wallet</a>
-        <a class="side-link" id="side-settings"><span class="ic">⚙️</span>Settings</a>
+        <a class="side-link active" data-nav="home"><span class="ic"><i data-lucide="house"></i></span>Home</a>
+        <a class="side-link" data-nav="discover"><span class="ic"><i data-lucide="compass"></i></span>Discover</a>
+        <a class="side-link" data-nav="create"><span class="ic"><i data-lucide="plus-circle"></i></span>Create Room</a>
+        <a class="side-link" data-nav="messages"><span class="ic"><i data-lucide="message-circle"></i></span>Messages</a>
+        <a class="side-link" data-nav="profile"><span class="ic"><i data-lucide="user"></i></span>Profile</a>
+        <a class="side-link" id="side-wallet"><span class="ic"><i data-lucide="wallet"></i></span>Wallet</a>
+        <a class="side-link" id="side-settings"><span class="ic"><i data-lucide="settings"></i></span>Settings</a>
       </div>
 
       <div class="desktop-main">
@@ -1106,14 +1135,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
             <div class="topbar-row">
               <div class="brand-mini"><div class="mark">V</div><div class="name">VIBRA</div></div>
               <div class="topbar-actions">
-                <button class="icon-btn" id="open-notifications" aria-label="Notifications">🔔<span class="badge" id="notif-badge">3</span></button>
-                <button class="icon-btn" id="open-wallet-mini" aria-label="Wallet">🪙</button>
+                <button class="icon-btn" id="open-notifications" aria-label="Notifications"><i data-lucide="bell"></i><span class="badge" id="notif-badge">3</span></button>
+                <button class="icon-btn" id="open-wallet-mini" aria-label="Wallet"><i data-lucide="wallet"></i></button>
                 <button class="icon-btn" id="open-profile-mini" aria-label="Your profile" style="padding:0;overflow:hidden;"><img class="avatar" style="width:100%;height:100%;" src="" id="mini-avatar" alt=""></button>
               </div>
             </div>
             <div class="greeting" id="home-greeting">Good evening<span id="home-username-sub">Welcome to Vibra</span></div>
             <div class="search-bar glass" style="border-radius:var(--radius-md);">
-              <span>🔍</span>
+              <i data-lucide="search" style="width:16px;height:16px;color:var(--text-tertiary);flex-shrink:0;"></i>
               <input type="text" id="room-search" placeholder="Search rooms, topics, hosts...">
             </div>
           </div>
@@ -1128,12 +1157,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
           </div>
 
           <div class="section">
-            <div class="section-head"><h2>🔥 Trending Chatrooms</h2></div>
+            <div class="section-head"><h2><i data-lucide="flame" style="width:17px;height:17px;color:#f97316;vertical-align:-3px;"></i> Trending Chatrooms</h2></div>
             <div class="room-grid" id="trending-rooms"></div>
           </div>
 
           <div class="section">
-            <div class="section-head"><h2>✨ Recommended for you</h2><span class="see-all" data-nav="discover">See all</span></div>
+            <div class="section-head"><h2><i data-lucide="sparkles" style="width:16px;height:16px;color:var(--gold);vertical-align:-3px;"></i> Recommended for you</h2><span class="see-all" data-nav="discover">See all</span></div>
             <div id="recommended-rooms"></div>
           </div>
         </div>
@@ -1143,10 +1172,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
           <div class="topbar">
             <div class="topbar-row">
               <div class="greeting" style="margin-bottom:0;">Discover</div>
-              <button class="icon-btn" id="open-notifications-2" aria-label="Notifications">🔔</button>
+              <button class="icon-btn" id="open-notifications-2" aria-label="Notifications"><i data-lucide="bell"></i></button>
             </div>
             <div class="search-bar glass" style="border-radius:var(--radius-md); margin-top:14px;">
-              <span>🔍</span><input type="text" id="discover-search" placeholder="Find your next room...">
+              <i data-lucide="search" style="width:16px;height:16px;color:var(--text-tertiary);flex-shrink:0;"></i><input type="text" id="discover-search" placeholder="Find your next room...">
             </div>
           </div>
           <div class="chip-row" id="discover-filter-row" style="padding-top:6px;"></div>
@@ -1163,7 +1192,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
           <div class="topbar">
             <div class="topbar-row"><div class="greeting" style="margin-bottom:0;">Messages</div></div>
             <div class="search-bar glass" style="border-radius:var(--radius-md); margin-top:14px;">
-              <span>🔍</span><input type="text" id="messages-search" placeholder="Search messages...">
+              <i data-lucide="search" style="width:16px;height:16px;color:var(--text-tertiary);flex-shrink:0;"></i><input type="text" id="messages-search" placeholder="Search messages...">
             </div>
           </div>
           <div id="messages-list"></div>
@@ -1174,7 +1203,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
         <div id="tab-profile" class="app-tab hidden">
           <div class="topbar" style="padding-bottom:0;">
             <div class="topbar-row"><div class="greeting" style="margin-bottom:0;">Profile</div>
-              <button class="icon-btn" id="open-settings" aria-label="Settings">⚙️</button>
+              <button class="icon-btn" id="open-settings" aria-label="Settings"><i data-lucide="settings"></i></button>
             </div>
           </div>
           <div id="profile-render-target"></div>
@@ -1192,11 +1221,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 
     <!-- Bottom nav (mobile) -->
     <div class="bottom-nav">
-      <div class="nav-item active" data-nav="home"><span class="ic">🏠</span>Home</div>
-      <div class="nav-item" data-nav="discover"><span class="ic">🔍</span>Discover</div>
-      <div class="nav-item create" data-nav="create"><span class="ic">➕</span></div>
-      <div class="nav-item" data-nav="messages"><span class="ic">💬</span>Messages</div>
-      <div class="nav-item" data-nav="profile"><span class="ic">👤</span>Profile</div>
+      <div class="nav-item active" data-nav="home"><span class="ic"><i data-lucide="house"></i></span>Home</div>
+      <div class="nav-item" data-nav="discover"><span class="ic"><i data-lucide="compass"></i></span>Discover</div>
+      <div class="nav-item create" data-nav="create"><span class="ic"><i data-lucide="plus"></i></span></div>
+      <div class="nav-item" data-nav="messages"><span class="ic"><i data-lucide="message-circle"></i></span>Messages</div>
+      <div class="nav-item" data-nav="profile"><span class="ic"><i data-lucide="user"></i></span>Profile</div>
     </div>
   </div><!-- /app-shell -->
 
@@ -1208,14 +1237,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
         <h2 id="room-title">Room</h2>
         <div class="sub" id="room-online-count">0 online</div>
       </div>
-      <button class="icon-btn" id="room-share" aria-label="Share room">🔗</button>
-      <button class="icon-btn" id="room-more" aria-label="Room options">⋮</button>
+      <button class="icon-btn" id="room-share" aria-label="Share room"><i data-lucide="share-2"></i></button>
+      <button class="icon-btn" id="room-more" aria-label="Room options"><i data-lucide="more-vertical"></i></button>
     </div>
     <div class="ov-body" style="display:flex; flex-direction:column; padding:0; overflow:hidden; position:relative;">
       <div class="voice-area">
         <div class="host-block">
           <div class="vibra-ring" id="host-ring"><img class="avatar" id="host-avatar" src="" alt=""></div>
-          <div class="role">👑 HOST</div>
+          <div class="role"><i data-lucide="crown" style="width:13px;height:13px;color:var(--gold);"></i> HOST</div>
           <div class="uname" id="host-name">Host</div>
         </div>
         <div class="mic-grid" id="mic-grid"></div>
@@ -1551,6 +1580,7 @@ const DATA = (function(){
 })();
 </script>
 
+<script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script src="api.js"></script>
 <script src="app.js"></script>
