@@ -183,33 +183,194 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 @keyframes loaderMove{ 0%{transform:translateX(-100%);} 100%{transform:translateX(340%);} }
 
 /* ==========================================================================
-   AUTH SCREENS
+   AUTH SCREENS — Premium split-panel design
    ========================================================================== */
-.auth-screen{ min-height:100vh; padding:32px 22px 40px; display:flex; flex-direction:column; }
-.auth-brand{ display:flex; align-items:center; gap:10px; margin-bottom:28px; }
-.auth-brand .mark{ width:34px; height:34px; border-radius:10px; background:var(--accent-grad); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:800; color:#fff; font-size:15px; }
-.auth-brand .name{ font-family:var(--font-display); font-weight:700; font-size:18px; letter-spacing:1px; }
-.auth-head h1{ font-size:28px; margin-bottom:6px; }
-.auth-head p{ color:var(--text-secondary); font-size:14.5px; margin-bottom:26px; }
-.field{ margin-bottom:14px; }
-.field label{ display:block; font-size:12.5px; color:var(--text-secondary); margin-bottom:7px; font-weight:600; letter-spacing:.3px; }
-.input-wrap{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-radius:var(--radius-md); background:var(--surface-glass); border:1px solid var(--border-glass); transition:border-color .15s; }
-.input-wrap:focus-within{ border-color:var(--accent-1); }
-.input-wrap input{ flex:1; min-width:0; font-size:14.5px; color:var(--text-primary); }
-.input-wrap input::placeholder{ color:var(--text-tertiary); }
-.input-icon{ opacity:.6; font-size:15px; }
-.field-error{ color:var(--danger); font-size:12px; margin-top:6px; display:none; }
-.field.error .input-wrap{ border-color:var(--danger); }
+.auth-screen{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns:1fr;
+  animation:authFadeIn .35s ease;
+}
+@keyframes authFadeIn{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+
+/* Left decorative panel — only visible on wide screens */
+.auth-panel{
+  display:none;
+  position:relative;
+  overflow:hidden;
+  background: linear-gradient(145deg, #1a0533 0%, #0d0621 40%, #12062b 100%);
+}
+.auth-panel::before{
+  content:'';
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 30% 40%, rgba(183,33,255,0.45), transparent 65%),
+    radial-gradient(ellipse 60% 50% at 75% 70%, rgba(255,62,165,0.3), transparent 60%);
+}
+.auth-panel-inner{
+  position:relative; z-index:1;
+  height:100%; display:flex; flex-direction:column;
+  justify-content:flex-end; padding:52px;
+}
+.auth-panel-logo{
+  width:72px; height:72px; border-radius:22px;
+  background:var(--accent-grad);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-weight:800; font-size:28px; color:#fff;
+  box-shadow:0 0 50px rgba(183,33,255,0.6);
+  margin-bottom:32px;
+  animation:logoPop .8s cubic-bezier(.2,1.4,.4,1) .2s both;
+}
+.auth-panel h2{
+  font-family:var(--font-display); font-weight:800;
+  font-size:clamp(28px,3.5vw,42px); line-height:1.18; margin-bottom:18px;
+  background:linear-gradient(135deg,#fff 0%,rgba(255,255,255,0.72) 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.auth-panel p{
+  font-size:15px; color:rgba(255,255,255,0.55); line-height:1.7; max-width:340px;
+}
+.auth-panel-orbs{
+  position:absolute; inset:0; pointer-events:none;
+}
+.auth-panel-orbs span{
+  position:absolute; border-radius:50%;
+  background:var(--accent-grad); opacity:.12;
+  animation:orbFloat 6s ease-in-out infinite;
+}
+.auth-panel-orbs span:nth-child(1){ width:260px; height:260px; top:-60px; right:-80px; animation-delay:0s; }
+.auth-panel-orbs span:nth-child(2){ width:180px; height:180px; bottom:80px; left:-40px; animation-delay:-2s; }
+.auth-panel-orbs span:nth-child(3){ width:120px; height:120px; top:40%; right:20%; animation-delay:-4s; opacity:.08; }
+@keyframes orbFloat{
+  0%,100%{ transform:translateY(0) scale(1); }
+  50%{ transform:translateY(-20px) scale(1.05); }
+}
+
+/* Right form panel */
+.auth-form-side{
+  display:flex; flex-direction:column;
+  padding:40px 28px 40px;
+  overflow-y:auto;
+  background:var(--bg);
+  min-height:100vh;
+}
+
+/* Top brand strip (mobile) */
+.auth-brand{
+  display:flex; align-items:center; gap:10px; margin-bottom:36px;
+}
+.auth-brand .mark{
+  width:38px; height:38px; border-radius:12px;
+  background:var(--accent-grad);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-weight:800; color:#fff; font-size:17px;
+  box-shadow:0 4px 16px rgba(183,33,255,0.4);
+}
+.auth-brand .name{
+  font-family:var(--font-display); font-weight:800; font-size:20px; letter-spacing:1.5px;
+  background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+/* Heading */
+.auth-head{ margin-bottom:32px; }
+.auth-head h1{ font-size:clamp(24px,5vw,32px); font-weight:800; margin-bottom:8px; font-family:var(--font-display); }
+.auth-head p{ color:var(--text-secondary); font-size:14.5px; line-height:1.6; }
+
+/* Fields */
+.field{ margin-bottom:18px; }
+.field label{
+  display:block; font-size:11.5px; color:var(--text-tertiary);
+  margin-bottom:8px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
+}
+.input-wrap{
+  display:flex; align-items:center; gap:12px;
+  padding:15px 18px; border-radius:14px;
+  background:rgba(255,255,255,0.04);
+  border:1.5px solid rgba(255,255,255,0.08);
+  transition:border-color .2s, box-shadow .2s, background .2s;
+}
+.input-wrap:focus-within{
+  border-color:var(--accent-1);
+  background:rgba(183,33,255,0.06);
+  box-shadow:0 0 0 3px rgba(183,33,255,0.12);
+}
+.input-wrap input{ flex:1; min-width:0; font-size:15px; color:var(--text-primary); }
+.input-wrap input::placeholder{ color:rgba(255,255,255,0.22); }
+.input-icon{ opacity:.5; font-size:16px; flex-shrink:0; }
+.field-error{ color:var(--danger); font-size:12px; margin-top:6px; display:none; font-weight:500; }
+.field.error .input-wrap{ border-color:var(--danger); box-shadow:0 0 0 3px rgba(255,92,108,0.1); }
 .field.error .field-error{ display:block; }
-.auth-links{ display:flex; justify-content:space-between; align-items:center; margin:14px 0 22px; font-size:13px; }
+
+/* pw toggle */
+.pw-toggle{ color:rgba(255,255,255,0.3); font-size:16px; transition:color .15s; padding:0 2px; flex-shrink:0; }
+.pw-toggle:hover{ color:var(--text-primary); }
+
+/* Auth util rows */
+.auth-links{
+  display:flex; justify-content:space-between; align-items:center;
+  margin:8px 0 24px; font-size:13px;
+}
 .auth-links button{ color:var(--accent-2); font-weight:600; }
-.divider{ display:flex; align-items:center; gap:12px; color:var(--text-tertiary); font-size:12.5px; margin:22px 0; }
-.divider::before,.divider::after{ content:''; flex:1; height:1px; background:var(--border-glass); }
+.divider{
+  display:flex; align-items:center; gap:14px;
+  color:var(--text-tertiary); font-size:12px; margin:24px 0;
+}
+.divider::before,.divider::after{ content:''; flex:1; height:1px; background:rgba(255,255,255,0.07); }
 .social-row{ display:flex; flex-direction:column; gap:10px; }
-.auth-switch{ margin-top:auto; padding-top:24px; text-align:center; font-size:14px; color:var(--text-secondary); }
+.btn-glass{
+  background:rgba(255,255,255,0.05);
+  border:1.5px solid rgba(255,255,255,0.1);
+  color:var(--text-primary);
+  font-weight:600;
+  transition:background .2s, border-color .2s, transform .15s;
+}
+.btn-glass:hover{ background:rgba(255,255,255,0.09); border-color:rgba(255,255,255,0.2); }
+.btn-glass:active{ transform:scale(0.97); }
+
+.auth-switch{
+  margin-top:auto; padding-top:28px;
+  text-align:center; font-size:14px; color:var(--text-secondary);
+}
 .auth-switch button{ color:var(--accent-2); font-weight:700; }
-.success-banner{ background:rgba(74,222,128,0.12); border:1px solid rgba(74,222,128,.3); color:#c8ffdd; padding:12px 14px; border-radius:var(--radius-md); font-size:13.5px; margin-bottom:16px; display:none; }
+
+.success-banner{
+  background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,.25);
+  color:#a8ffc8; padding:13px 16px; border-radius:12px;
+  font-size:13.5px; margin-bottom:20px; display:none;
+  animation:authFadeIn .25s ease;
+}
 .success-banner.show{ display:block; }
+
+/* Primary button upgrade */
+.btn-primary{
+  background:var(--accent-grad);
+  color:#fff;
+  box-shadow:0 4px 24px rgba(183,33,255,0.35);
+  font-weight:700; letter-spacing:.2px;
+  transition:transform .15s ease, box-shadow .2s ease;
+}
+.btn-primary:hover{ box-shadow:0 6px 32px rgba(183,33,255,0.55); transform:translateY(-1px); }
+.btn-primary:active{ transform:scale(0.97) translateY(0); }
+
+/* Desktop split layout */
+@media (min-width: 900px){
+  .auth-screen{
+    grid-template-columns:1fr 1fr;
+    min-height:100vh;
+  }
+  .auth-panel{ display:flex; flex-direction:column; }
+  .auth-form-side{
+    padding:56px 60px;
+    max-width:560px; width:100%;
+    justify-content:center;
+    min-height:100vh;
+  }
+  .auth-brand{ display:none; } /* brand shown in left panel */
+}
+@media (min-width:1280px){
+  .auth-screen{ grid-template-columns:1.1fr 0.9fr; }
+  .auth-form-side{ padding:60px 80px; }
+}
 
 /* ==========================================================================
    APP SHELL / TOP BAR
@@ -246,32 +407,81 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .story span{ font-size:11.5px; color:var(--text-secondary); max-width:60px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Categories */
-.chip-row{ display:flex; gap:10px; overflow-x:auto; padding:0 18px 4px; }
-.chip{ flex-shrink:0; padding:9px 18px; border-radius:var(--radius-pill); font-size:13px; font-weight:600; background:var(--surface-glass); border:1px solid var(--border-glass); color:var(--text-secondary); transition:all .15s; }
-.chip.active{ background:var(--accent-grad); color:#fff; border-color:transparent; }
-
-/* Room cards */
-.room-grid{ display:grid; grid-template-columns:1fr; gap:14px; padding:0 18px; }
-.room-card{
-  border-radius:var(--radius-lg); padding:16px; position:relative; overflow:hidden;
-  box-shadow:var(--shadow-card); transition:transform .18s ease;
+.chip-row{ display:flex; gap:8px; overflow-x:auto; padding:0 18px 4px; }
+.chip{
+  flex-shrink:0; padding:9px 20px; border-radius:var(--radius-pill);
+  font-size:13px; font-weight:700;
+  background:rgba(255,255,255,0.05);
+  border:1.5px solid rgba(255,255,255,0.08);
+  color:var(--text-secondary); transition:all .18s;
+  letter-spacing:.1px;
 }
-.room-card:active{ transform:scale(0.98); }
-.room-card::before{ content:''; position:absolute; inset:0; opacity:.85; z-index:0; }
-.room-card > *{ position:relative; z-index:1; }
-.room-card-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
-.room-badge{ display:inline-flex; align-items:center; gap:5px; background:rgba(0,0,0,0.35); padding:5px 10px; border-radius:var(--radius-pill); font-size:11px; font-weight:700; letter-spacing:.4px; }
-.room-badge.live{ color:#ffd7db; }
-.room-cat{ font-size:11px; color:rgba(255,255,255,0.85); background:rgba(0,0,0,0.3); padding:5px 10px; border-radius:var(--radius-pill); font-weight:600; }
-.room-name{ font-family:var(--font-display); font-size:19px; font-weight:700; color:#fff; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.room-desc{ font-size:12.5px; color:rgba(255,255,255,0.78); margin-bottom:14px; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.chip.active{
+  background:var(--accent-grad); color:#fff; border-color:transparent;
+  box-shadow:0 3px 16px rgba(183,33,255,0.35);
+}
+.chip:not(.active):hover{
+  background:rgba(255,255,255,0.09);
+  border-color:rgba(255,255,255,0.14);
+  color:var(--text-primary);
+}
+
+/* Room cards — glassmorphism premium */
+.room-grid{ display:grid; grid-template-columns:1fr; gap:16px; padding:0 18px; }
+.room-card{
+  border-radius:20px; padding:18px; position:relative; overflow:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+  transition:transform .22s cubic-bezier(.2,.8,.3,1), box-shadow .22s ease;
+  cursor:pointer;
+}
+.room-card:hover{ transform:translateY(-4px); box-shadow:0 16px 48px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12); }
+.room-card:active{ transform:scale(0.97) translateY(0); }
+.room-card::before{ content:''; position:absolute; inset:0; opacity:.9; z-index:0; }
+/* glass overlay shimmer */
+.room-card::after{
+  content:''; position:absolute; inset:0; z-index:1;
+  background:linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 50%, rgba(0,0,0,0.1) 100%);
+  pointer-events:none;
+}
+.room-card > *{ position:relative; z-index:2; }
+.room-card-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+.room-badge{
+  display:inline-flex; align-items:center; gap:5px;
+  background:rgba(0,0,0,0.4); backdrop-filter:blur(8px);
+  padding:5px 11px; border-radius:var(--radius-pill);
+  font-size:10.5px; font-weight:800; letter-spacing:.5px; border:1px solid rgba(255,255,255,0.1);
+}
+.room-badge.live{ color:#ffcdd5; }
+.room-cat{
+  font-size:10.5px; color:rgba(255,255,255,0.9);
+  background:rgba(0,0,0,0.35); backdrop-filter:blur(8px);
+  padding:5px 11px; border-radius:var(--radius-pill); font-weight:700;
+  border:1px solid rgba(255,255,255,0.12);
+}
+.room-name{
+  font-family:var(--font-display); font-size:20px; font-weight:800; color:#fff;
+  margin-bottom:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  text-shadow:0 2px 12px rgba(0,0,0,0.3);
+}
+.room-desc{
+  font-size:12.5px; color:rgba(255,255,255,0.75); margin-bottom:16px; line-height:1.6;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
 .room-card-bottom{ display:flex; align-items:center; justify-content:space-between; }
 .room-avatars{ display:flex; }
-.room-avatars .avatar{ width:28px; height:28px; margin-left:-10px; border-width:2px; }
+.room-avatars .avatar{ width:28px; height:28px; margin-left:-9px; border-width:2px; }
 .room-avatars .avatar:first-child{ margin-left:0; }
-.room-online{ font-size:11.5px; color:rgba(255,255,255,0.85); margin-left:8px; font-weight:600; }
-.room-join{ padding:9px 18px; border-radius:var(--radius-pill); background:rgba(255,255,255,0.16); backdrop-filter:blur(6px); color:#fff; font-size:12.5px; font-weight:700; border:1px solid rgba(255,255,255,0.3); }
-.room-join:active{ background:#fff; color:var(--bg); }
+.room-online{ font-size:11.5px; color:rgba(255,255,255,0.85); margin-left:10px; font-weight:700; }
+.room-join{
+  padding:9px 20px; border-radius:var(--radius-pill);
+  background:rgba(255,255,255,0.18); backdrop-filter:blur(12px);
+  color:#fff; font-size:12.5px; font-weight:800;
+  border:1.5px solid rgba(255,255,255,0.35);
+  transition:background .15s, transform .12s;
+  letter-spacing:.2px;
+}
+.room-join:hover{ background:rgba(255,255,255,0.28); }
+.room-join:active{ background:#fff; color:var(--bg); transform:scale(0.94); }
 
 /* discover list rows */
 .discover-row{ display:flex; gap:12px; align-items:center; padding:12px 18px; }
@@ -289,19 +499,33 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .empty-state h3{ color:var(--text-primary); font-size:16px; margin-bottom:6px; }
 .empty-state p{ font-size:13px; }
 
-/* Bottom nav */
+/* Bottom nav — premium frosted glass */
 .bottom-nav{
   position:fixed; bottom:0; left:0; right:0; z-index:50; height:var(--nav-h);
   display:flex; align-items:center; justify-content:space-around;
-  background:rgba(11,10,18,0.85); backdrop-filter:blur(20px); border-top:1px solid var(--border-glass);
+  background:rgba(11,10,18,0.9);
+  backdrop-filter:blur(28px) saturate(180%);
+  -webkit-backdrop-filter:blur(28px) saturate(180%);
+  border-top:1px solid rgba(255,255,255,0.07);
   max-width:1400px; margin:0 auto;
 }
-.nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:10.5px; color:var(--text-tertiary); font-weight:600; padding:6px 10px; position:relative; }
-.nav-item .ic{ font-size:20px; }
-.nav-item.active{ color:var(--text-primary); }
-.nav-item.active .ic{ transform:translateY(-2px); }
-.nav-item.active::before{ content:''; position:absolute; top:-11px; width:26px; height:3px; border-radius:3px; background:var(--accent-grad); }
-.nav-item.create .ic{ width:38px; height:38px; border-radius:50%; background:var(--accent-grad); display:flex; align-items:center; justify-content:center; color:#fff; font-size:19px; box-shadow:var(--shadow-glow); }
+.nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:10px; color:var(--text-tertiary); font-weight:600; padding:6px 12px; position:relative; transition:color .2s; }
+.nav-item .ic{ font-size:21px; transition:transform .2s ease; }
+.nav-item.active{ color:var(--accent-2); }
+.nav-item.active .ic{ transform:translateY(-3px) scale(1.12); filter:drop-shadow(0 0 6px rgba(255,62,165,0.5)); }
+.nav-item.active::before{
+  content:''; position:absolute; top:-1px; width:30px; height:3px; border-radius:3px;
+  background:var(--accent-grad); box-shadow:0 0 8px rgba(183,33,255,0.6);
+}
+.nav-item.create .ic{
+  width:42px; height:42px; border-radius:14px;
+  background:var(--accent-grad);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-size:20px;
+  box-shadow:0 4px 20px rgba(183,33,255,0.5);
+  transition:transform .2s ease, box-shadow .2s ease;
+}
+.nav-item.create:active .ic{ transform:scale(0.9); }
 
 /* ==========================================================================
    OVERLAY SCREEN (full screen pushed panel, used for room/wallet/profile/etc)
@@ -659,27 +883,71 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   :root{ --nav-h:0px; }
   .bottom-nav{ display:none; }
   #app-shell{ padding-bottom:0; }
-  .desktop-layout{ display:grid; grid-template-columns:250px 1fr 300px; min-height:100vh; align-items:start; }
-  .desktop-sidebar{ position:sticky; top:0; height:100vh; padding:24px 14px; border-right:1px solid var(--border-glass); display:flex; flex-direction:column; gap:6px; }
-  .desktop-sidebar .brand-mini{ padding:0 12px; margin-bottom:26px; }
-  .side-link{ display:flex; align-items:center; gap:14px; padding:13px 14px; border-radius:var(--radius-md); font-weight:600; font-size:14.5px; color:var(--text-secondary); }
-  .side-link .ic{ font-size:18px; }
-  .side-link.active{ background:var(--surface-glass); color:var(--text-primary); }
-  .side-link.active .ic{ color:var(--accent-2); }
+  .desktop-layout{ display:grid; grid-template-columns:260px 1fr 300px; min-height:100vh; align-items:start; }
+  .desktop-sidebar{
+    position:sticky; top:0; height:100vh;
+    padding:28px 16px 24px;
+    border-right:1px solid rgba(255,255,255,0.06);
+    background:rgba(11,10,18,0.6);
+    backdrop-filter:blur(20px);
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .desktop-sidebar .brand-mini{ padding:0 14px; margin-bottom:32px; }
+  .desktop-sidebar .brand-mini .mark{
+    width:34px; height:34px; border-radius:10px;
+    background:var(--accent-grad);
+    box-shadow:0 4px 16px rgba(183,33,255,0.4);
+  }
+  .desktop-sidebar .brand-mini .name{
+    background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;
+    font-weight:800; letter-spacing:1.5px;
+  }
+  .side-link{
+    display:flex; align-items:center; gap:14px; padding:13px 16px;
+    border-radius:14px; font-weight:600; font-size:14px;
+    color:var(--text-tertiary); transition:all .2s ease;
+    position:relative;
+  }
+  .side-link .ic{ font-size:19px; transition:transform .2s ease; }
+  .side-link:hover{ background:rgba(255,255,255,0.04); color:var(--text-secondary); }
+  .side-link:hover .ic{ transform:scale(1.1); }
+  .side-link.active{
+    background:linear-gradient(135deg, rgba(183,33,255,0.15) 0%, rgba(255,62,165,0.08) 100%);
+    color:var(--text-primary);
+    border:1px solid rgba(183,33,255,0.2);
+  }
+  .side-link.active .ic{ color:var(--accent-2); filter:drop-shadow(0 0 5px rgba(255,62,165,0.5)); }
+  .side-link.active::before{
+    content:''; position:absolute; left:0; top:25%; bottom:25%;
+    width:3px; border-radius:3px; background:var(--accent-grad);
+    box-shadow:0 0 8px rgba(183,33,255,0.6);
+  }
   .desktop-main{ min-width:0; padding-bottom:40px; }
-  .desktop-right{ position:sticky; top:0; height:100vh; overflow-y:auto; padding:24px 18px; border-left:1px solid var(--border-glass); }
-  .desktop-right h3{ font-size:14px; margin-bottom:14px; color:var(--text-secondary); }
-  .online-user-row{ display:flex; align-items:center; gap:10px; padding:9px 0; }
+  .desktop-right{
+    position:sticky; top:0; height:100vh; overflow-y:auto;
+    padding:28px 20px;
+    border-left:1px solid rgba(255,255,255,0.06);
+    background:rgba(11,10,18,0.4);
+  }
+  .desktop-right h3{
+    font-size:11px; margin-bottom:16px;
+    color:var(--text-tertiary); font-weight:700;
+    letter-spacing:.8px; text-transform:uppercase;
+  }
+  .online-user-row{ display:flex; align-items:center; gap:12px; padding:9px 0; }
   .online-user-row .avatar{ width:38px; height:38px; }
   .online-user-row .n{ font-size:13.5px; font-weight:600; }
   .online-user-row .s{ font-size:11px; color:var(--success); }
   .desktop-hide{ display:none; }
-  .topbar{ padding-top:22px; }
-  .room-grid{ grid-template-columns:1fr 1fr 1fr; }
+  .topbar{ padding-top:24px; }
+  .room-grid{ grid-template-columns:1fr 1fr; gap:18px; }
 }
 @media (min-width:1080px) and (max-width:1339px){
-  .desktop-layout{ grid-template-columns:220px 1fr; }
+  .desktop-layout{ grid-template-columns:240px 1fr; }
   .desktop-right{ display:none; }
+}
+@media (min-width:1400px){
+  .room-grid{ grid-template-columns:1fr 1fr 1fr; }
 }
 </style>
 </head>
@@ -702,88 +970,116 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 
   <!-- ============================= AUTH: LOGIN ============================= -->
   <div id="screen-login" class="auth-screen hidden">
-    <div class="auth-brand"><div class="mark">V</div><div class="name">VIBRA</div></div>
-    <div class="auth-head">
-      <h1 class="h1">Welcome back</h1>
-      <p>Log in to jump back into your rooms.</p>
-    </div>
-    <div class="success-banner" id="login-success">Account created — log in to continue.</div>
-    <form id="login-form" novalidate>
-      <div class="field" id="login-id-field">
-        <label>Username</label>
-        <div class="input-wrap"><span class="input-icon">👤</span><input type="text" id="login-id" placeholder="your_username"></div>
-        <div class="field-error">Enter your username</div>
+    <!-- Left decorative panel -->
+    <div class="auth-panel">
+      <div class="auth-panel-orbs">
+        <span></span><span></span><span></span>
       </div>
-      <div class="field" id="login-pw-field">
-        <label>Password</label>
-        <div class="input-wrap">
-          <span class="input-icon">🔒</span>
-          <input type="password" id="login-pw" placeholder="••••••••">
-          <button type="button" class="pw-toggle" data-target="login-pw">👁️</button>
+      <div class="auth-panel-inner">
+        <div class="auth-panel-logo">V</div>
+        <h2>Where voices<br>come alive.</h2>
+        <p>Join millions of people connecting in live voice rooms every day. Real conversations, real moments.</p>
+      </div>
+    </div>
+    <!-- Right form panel -->
+    <div class="auth-form-side">
+      <div class="auth-brand"><div class="mark">V</div><div class="name">VIBRA</div></div>
+      <div class="auth-head">
+        <h1 class="h1">Welcome back</h1>
+        <p>Log in to jump back into your rooms.</p>
+      </div>
+      <div class="success-banner" id="login-success">Account created — log in to continue.</div>
+      <form id="login-form" novalidate>
+        <div class="field" id="login-id-field">
+          <label>Username</label>
+          <div class="input-wrap"><span class="input-icon">👤</span><input type="text" id="login-id" placeholder="your_username" autocomplete="username"></div>
+          <div class="field-error">Enter your username</div>
         </div>
-        <div class="field-error">Password is required</div>
+        <div class="field" id="login-pw-field">
+          <label>Password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="login-pw" placeholder="••••••••" autocomplete="current-password">
+            <button type="button" class="pw-toggle" data-target="login-pw">👁️</button>
+          </div>
+          <div class="field-error">Password is required</div>
+        </div>
+        <div class="auth-links">
+          <button type="button" id="guest-btn">Continue as guest</button>
+          <button type="button" id="forgot-btn">Forgot password?</button>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Log In</button>
+      </form>
+      <div class="divider">or continue with</div>
+      <div class="social-row">
+        <button class="btn btn-glass btn-block" id="google-btn">🔵 Continue with Google</button>
+        <button class="btn btn-glass btn-block" id="apple-btn"> Continue with Apple</button>
       </div>
-      <div class="auth-links">
-        <button type="button" id="guest-btn">Continue as guest</button>
-        <button type="button" id="forgot-btn">Forgot password?</button>
-      </div>
-      <button type="submit" class="btn btn-primary btn-block">Log In</button>
-    </form>
-    <div class="divider">or continue with</div>
-    <div class="social-row">
-      <button class="btn btn-glass btn-block" id="google-btn">🔵 Continue with Google</button>
-      <button class="btn btn-glass btn-block" id="apple-btn"> Continue with Apple</button>
+      <div class="auth-switch">New to Vibra? <button id="go-signup">Create an account</button></div>
     </div>
-    <div class="auth-switch">New to Vibra? <button id="go-signup">Create an account</button></div>
   </div>
 
   <!-- ============================= AUTH: SIGNUP ============================= -->
   <div id="screen-signup" class="auth-screen hidden">
-    <div class="auth-brand"><div class="mark">V</div><div class="name">VIBRA</div></div>
-    <div class="auth-head">
-      <h1 class="h1">Create account</h1>
-      <p>Join thousands vibing in live rooms right now.</p>
+    <!-- Left decorative panel -->
+    <div class="auth-panel">
+      <div class="auth-panel-orbs">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="auth-panel-inner">
+        <div class="auth-panel-logo">V</div>
+        <h2>Your voice,<br>your stage.</h2>
+        <p>Create an account and start hosting rooms, making friends, and building your community today.</p>
+      </div>
     </div>
-    <form id="signup-form" novalidate>
-      <div class="field" id="su-name-field">
-        <label>Full name</label>
-        <div class="input-wrap"><span class="input-icon">🧑</span><input type="text" id="su-name" placeholder="Sahil Menon"></div>
-        <div class="field-error">Full name is required</div>
+    <!-- Right form panel -->
+    <div class="auth-form-side">
+      <div class="auth-brand"><div class="mark">V</div><div class="name">VIBRA</div></div>
+      <div class="auth-head">
+        <h1 class="h1">Create account</h1>
+        <p>Join thousands vibing in live rooms right now.</p>
       </div>
-      <div class="field" id="su-username-field">
-        <label>Username</label>
-        <div class="input-wrap"><span class="input-icon">@</span><input type="text" id="su-username" placeholder="sahilm"></div>
-        <div class="field-error">Choose a username (min 3 characters)</div>
-      </div>
-      <div class="field" id="su-email-field">
-        <label>Email</label>
-        <div class="input-wrap"><span class="input-icon">✉️</span><input type="email" id="su-email" placeholder="you@example.com"></div>
-        <div class="field-error">Enter a valid email</div>
-      </div>
-      <div class="field" id="su-dob-field">
-        <label>Date of birth</label>
-        <div class="input-wrap"><span class="input-icon">🎂</span><input type="date" id="su-dob"></div>
-        <div class="field-error">Date of birth is required</div>
-      </div>
-      <div class="field" id="su-pw-field">
-        <label>Password</label>
-        <div class="input-wrap">
-          <span class="input-icon">🔒</span><input type="password" id="su-pw" placeholder="min 8 characters">
-          <button type="button" class="pw-toggle" data-target="su-pw">👁️</button>
+      <form id="signup-form" novalidate>
+        <div class="field" id="su-name-field">
+          <label>Full name</label>
+          <div class="input-wrap"><span class="input-icon">🧑</span><input type="text" id="su-name" placeholder="Sahil Menon" autocomplete="name"></div>
+          <div class="field-error">Full name is required</div>
         </div>
-        <div class="field-error">Password must be at least 8 characters</div>
-      </div>
-      <div class="field" id="su-pw2-field">
-        <label>Confirm password</label>
-        <div class="input-wrap">
-          <span class="input-icon">🔒</span><input type="password" id="su-pw2" placeholder="repeat password">
-          <button type="button" class="pw-toggle" data-target="su-pw2">👁️</button>
+        <div class="field" id="su-username-field">
+          <label>Username</label>
+          <div class="input-wrap"><span class="input-icon">@</span><input type="text" id="su-username" placeholder="sahilm" autocomplete="username"></div>
+          <div class="field-error">Choose a username (min 3 characters)</div>
         </div>
-        <div class="field-error">Passwords do not match</div>
-      </div>
-      <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px;">Create Account</button>
-    </form>
-    <div class="auth-switch">Already have an account? <button id="go-login">Log in</button></div>
+        <div class="field" id="su-email-field">
+          <label>Email</label>
+          <div class="input-wrap"><span class="input-icon">✉️</span><input type="email" id="su-email" placeholder="you@example.com" autocomplete="email"></div>
+          <div class="field-error">Enter a valid email</div>
+        </div>
+        <div class="field" id="su-dob-field">
+          <label>Date of birth</label>
+          <div class="input-wrap"><span class="input-icon">🎂</span><input type="date" id="su-dob"></div>
+          <div class="field-error">Date of birth is required</div>
+        </div>
+        <div class="field" id="su-pw-field">
+          <label>Password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span><input type="password" id="su-pw" placeholder="min 8 characters" autocomplete="new-password">
+            <button type="button" class="pw-toggle" data-target="su-pw">👁️</button>
+          </div>
+          <div class="field-error">Password must be at least 8 characters</div>
+        </div>
+        <div class="field" id="su-pw2-field">
+          <label>Confirm password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span><input type="password" id="su-pw2" placeholder="repeat password" autocomplete="new-password">
+            <button type="button" class="pw-toggle" data-target="su-pw2">👁️</button>
+          </div>
+          <div class="field-error">Passwords do not match</div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px;">Create Account</button>
+      </form>
+      <div class="auth-switch">Already have an account? <button id="go-login">Log in</button></div>
+    </div>
   </div>
 
   <!-- ============================= APP SHELL ============================= -->
