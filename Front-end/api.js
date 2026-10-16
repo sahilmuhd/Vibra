@@ -11,7 +11,14 @@
    functions to change.
    ========================================================================== */
 
-const API_BASE = "http://localhost:8000/api"; // change to your Render URL when deployed
+// Auto-detect API base: use relative URL on production, localhost in dev.
+// This way the same code works both locally and on vibra.sahilmuhd.com.
+const API_BASE = (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.protocol === 'file:'
+) ? 'http://localhost:8000/api' : '/api';
+
 
 const Api = {
   // ---- token storage (separate from your existing Storage.KEYS, so it

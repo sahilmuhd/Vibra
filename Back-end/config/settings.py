@@ -6,7 +6,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config("DJANGO_SECRET_KEY")
 DEBUG = config("DEBUG", default=False, cast=bool)
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = list(filter(None, [
+    *config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","),
+    "vibra.sahilmuhd.com",  # production domain — always allowed
+]))
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -78,12 +82,16 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {"user": "300/minute"},  # basic anti-spam floor
 }
 
-CORS_ALLOWED_ORIGINS = [
-    origin for origin in config("CORS_ALLOWED_ORIGINS", default="").split(",") if origin
-]
+CORS_ALLOWED_ORIGINS = list(filter(None, [
+    *config("CORS_ALLOWED_ORIGINS", default="").split(","),
+    # Always allow the live site — remove this if you add it to your env var instead
+    "https://vibra.sahilmuhd.com",
+]))
+CORS_ALLOW_CREDENTIALS = True
 # In dev, also allow requests from file:// (origin=null) and any localhost port.
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
