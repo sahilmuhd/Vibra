@@ -65,8 +65,20 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "payload": {"user_id": self.user.id, "level": content.get("level", 0)},
                 },
             )
+        elif content.get("type") == "reaction":
+            emoji = str(content.get("emoji", "❤️"))[:4]
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    "type": "reaction_event",
+                    "payload": {"user_id": self.user.id, "emoji": emoji},
+                },
+            )
 
     # --- Group event handlers: method name = event "type" with dots -> underscores ---
+
+    async def reaction_event(self, event):
+        await self.send_json({"event": "reaction", **event["payload"]})
 
     async def seat_update(self, event):
         await self.send_json({"event": "seat_update", **event["payload"]})
@@ -76,6 +88,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def hand_raised(self, event):
         await self.send_json({"event": "hand_raised", **event["payload"]})
+
+    async def hand_lowered(self, event):
+        await self.send_json({"event": "hand_lowered", **event["payload"]})
+
+    async def room_ended(self, event):
+        await self.send_json({"event": "room_ended", **event["payload"]})
+
+    async def seat_lock(self, event):
+        await self.send_json({"event": "seat_lock", **event["payload"]})
+
+    async def participant_kicked(self, event):
+        await self.send_json({"event": "participant_kicked", **event["payload"]})
 
     async def message_new(self, event):
         await self.send_json({"event": "message_new", **event["payload"]})

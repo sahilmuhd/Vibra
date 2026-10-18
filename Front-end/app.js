@@ -536,7 +536,8 @@ function seatsFromDetail(detail){
     speaking:false,
     giftsReceived:0,
     userId: s.user.id,
-  } : { empty:true });
+    ...(s.is_locked ? { locked: true } : {}),
+  } : (s.is_locked ? { empty:true, locked:true } : { empty:true }));
 }
 
 // Seat/presence events only say "something changed"; re-fetching the snapshot
@@ -562,31 +563,135 @@ async function refreshActiveRoom(roomId){
   }
 }
 
+/* ---- connection status & floating reactions ---- */
+let roomReconnectTimer = null;
+let roomReconnectAttempts = 0;
+
+function setConnectionStatus(status){
+  const el = document.getElementById('room-connection-status');
+  if(!el) return;
+  if(status === 'live'){
+    el.className = 'connection-status-pill live';
+    el.innerHTML = '<span class="dot"></span>Live';
+  } else if(status === 'reconnecting'){
+    el.className = 'connection-status-pill reconnecting';
+    el.innerHTML = '<span class="dot"></span>Reconnecting';
+  }
+}
+
+function spawnFloatingReaction(emoji){
+  const container = document.getElementById('floating-reactions-container');
+  if(!container) return;
+  const el = document.createElement('div');
+  el.className = 'floating-emoji';
+  el.textContent = emoji || '❤️';
+  const rot = (Math.random() * 30 - 15) + 'deg';
+  const rotEnd = (Math.random() * 40 - 20) + 'deg';
+  const left = Math.floor(Math.random() * 45) + 'px';
+  el.style.setProperty('--rot', rot);
+  el.style.setProperty('--rot-end', rotEnd);
+  el.style.left = left;
+  container.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+  setTimeout(() => el.remove(), 2500);
+}
+
 /* ---- real-time room WebSocket (API rooms only) ---- */
 function connectRoomSocket(roomId){
-  if(STATE.roomSocket) STATE.roomSocket.close();
-  STATE.roomSocket = Api.connectRoomSocket(roomId, (event) => {
-    if(!STATE.activeRoom || STATE.activeRoom.id !== roomId) return; // stale event after leaving
-    if(event.event === 'message_new'){
-      const box = document.getElementById('chat-messages');
-      const mine = event.user && event.user.username === STATE.currentUser.username;
-      box.insertAdjacentHTML('beforeend', chatMessageHTML({
-        who: mine ? 'me' : (event.user ? event.user.username : 'system'),
-        text: event.text,
-        time: new Date(event.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
-        system: event.is_system,
-        displayName: event.user ? event.user.username : 'Vibra',
-        avatarUrl: event.user ? event.user.avatar_url : '',
-      }));
-      box.scrollTop = box.scrollHeight;
-    }else if(event.event === 'seat_update' || event.event === 'seat_mute' || event.event === 'presence_update'){
-      // Previously only "left" was handled, so other clients never saw anyone sit down.
-      scheduleRoomRefresh(roomId);
-    }
-  });
+  disconnectRoomSocket();
+  roomReconnectAttempts = 0;
+
+  function establish(){
+    if(!STATE.activeRoom || STATE.activeRoom.id !== roomId) return;
+    setConnectionStatus('reconnecting');
+
+    STATE.roomSocket = Api.connectRoomSocket(roomId, (event) => {
+      if(!STATE.activeRoom || STATE.activeRoom.id !== roomId) return; // stale event after leaving
+      if(event.event === 'message_new'){
+        const box = document.getElementById('chat-messages');
+        const mine = event.user && event.user.username === (STATE.currentUser && STATE.currentUser.username);
+        box.insertAdjacentHTML('beforeend', chatMessageHTML({
+          who: mine ? 'me' : (event.user ? event.user.username : 'system'),
+          text: event.text,
+          time: new Date(event.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+          system: event.is_system,
+          displayName: event.user ? event.user.username : 'Vibra',
+          avatarUrl: event.user ? event.user.avatar_url : '',
+        }));
+        box.scrollTop = box.scrollHeight;
+      }else if(event.event === 'seat_update' || event.event === 'seat_mute' || event.event === 'presence_update' || event.event === 'seat_lock'){
+        scheduleRoomRefresh(roomId);
+      }else if(event.event === 'room_ended'){
+        showToast('The host ended this room', 'info');
+        leaveRoom();
+      }else if(event.event === 'participant_kicked'){
+        if(event.user_id === (STATE.currentUser && STATE.currentUser.id)){
+          showToast('You were removed from this room by the host', 'error');
+          leaveRoom();
+        } else {
+          scheduleRoomRefresh(roomId);
+        }
+      }else if(event.event === 'reaction'){
+        spawnFloatingReaction(event.emoji);
+      }else if(event.event === 'gift_sent'){
+        const isMine = event.sender_id === (STATE.currentUser && STATE.currentUser.id);
+        if(!isMine){
+          const gift = DATA.giftCatalog.find(g => g.id === event.gift_id) || { emoji: event.gift_emoji || '🎁', name: event.gift_name || 'Gift' };
+          playGiftAnimation(gift.emoji, 100, event.combo || 1);
+          appendChatMessage({
+            who: 'system',
+            gift: true,
+            text: `🎉 ${event.sender_name || 'Someone'} sent ${gift.name} ${gift.emoji}${event.combo > 1 ? ` x${event.combo}` : ''}`,
+            system: false,
+          });
+        }
+      }else if(event.event === 'hand_raised'){
+        if(STATE.isHost && event.user){
+          if(!STATE.handQueue.some(r => r.id === event.user.id || r.name === event.user.username)){
+            STATE.handQueue.push({
+              id: event.user.id,
+              name: event.user.username,
+              avatar: event.user.avatar_url,
+              level: event.user.level,
+            });
+            updateHandButtonUI();
+          }
+        }
+      }else if(event.event === 'hand_lowered'){
+        if(STATE.isHost){
+          STATE.handQueue = STATE.handQueue.filter(r => r.id !== event.user_id);
+          updateHandButtonUI();
+        }
+      }
+    }, {
+      onOpen: () => {
+        roomReconnectAttempts = 0;
+        setConnectionStatus('live');
+      },
+      onClose: (e) => {
+        if(STATE.activeRoom && STATE.activeRoom.id === roomId && (!e || e.code !== 1000)){
+          setConnectionStatus('reconnecting');
+          const delay = Math.min(1000 * Math.pow(1.8, roomReconnectAttempts++), 12000);
+          clearTimeout(roomReconnectTimer);
+          roomReconnectTimer = setTimeout(() => {
+            if(STATE.activeRoom && STATE.activeRoom.id === roomId){
+              establish();
+              scheduleRoomRefresh(roomId);
+            }
+          }, delay);
+        }
+      }
+    });
+  }
+
+  establish();
 }
 function disconnectRoomSocket(){
-  if(STATE.roomSocket){ STATE.roomSocket.close(); STATE.roomSocket = null; }
+  clearTimeout(roomReconnectTimer);
+  if(STATE.roomSocket){
+    try{ STATE.roomSocket.close(1000); }catch(e){}
+    STATE.roomSocket = null;
+  }
 }
 
 /* ---- real voice (LiveKit) — API rooms only ----
@@ -646,7 +751,7 @@ function currentSeats(){
 
 function seatHTML(p, idx){
   if(p.empty){
-    return `<div class="mic-seat empty" data-seat-idx="${idx}"><div class="avatar-frame">＋</div><span class="uname">Empty seat</span></div>`;
+    return `<div class="mic-seat empty ${p.locked?'locked':''}" data-seat-idx="${idx}"><div class="avatar-frame">${p.locked?'🔒':'＋'}</div><span class="uname">${p.locked?'Locked':'Empty seat'}</span></div>`;
   }
   const crown = p.giftsReceived && p.giftsReceived === Math.max(...currentSeats().filter(s=>!s.empty).map(s=>s.giftsReceived||0)) && p.giftsReceived>0
     ? `<span class="seat-crown">👑</span>` : '';
@@ -702,6 +807,8 @@ function openSeatProfile(idx){
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
     }  // real mode: no DM backend yet, so no dead "Message" button
     if(STATE.isHost){
+      actions.push(`<button class="btn btn-glass" data-seat-action="force-mute" data-seat-idx="${idx}">🔇 ${seat.muted ? 'Unmute' : 'Mute speaker'}</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="lock-seat" data-seat-idx="${idx}">🔒 ${seat.locked ? 'Unlock seat' : 'Lock seat'}</button>`);
       actions.push(`<button class="btn btn-danger full" data-seat-action="remove" data-seat-idx="${idx}">Remove from mic</button>`);
     }
   }
@@ -824,6 +931,17 @@ function handleHandButton(){
     return;
   }
   if(STATE.mySeatIndex > -1){ showToast("You're already on mic", 'info'); return; }
+  const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
+  if(isApiRoom){
+    const willRaise = !STATE.handRaised;
+    const call = willRaise ? Api.raiseHand(STATE.activeRoom.id) : Api.lowerHand(STATE.activeRoom.id);
+    call.then((res) => {
+      STATE.handRaised = res && res.raised !== undefined ? res.raised : willRaise;
+      updateHandButtonUI();
+      showToast(STATE.handRaised ? 'Hand raised — host notified' : 'Hand lowered', 'info');
+    }).catch(e => showToast(e.message || 'Could not update hand raise', 'error'));
+    return;
+  }
   STATE.handRaised = !STATE.handRaised;
   updateHandButtonUI();
   showToast(STATE.handRaised ? 'Hand raised — the host has been notified' : 'Hand lowered', 'info');
@@ -1127,6 +1245,7 @@ function renderRoomMoreSheet(){
     rows.push(`<div class="sheet-action-row" data-more-action="mute-all"><div class="ic">🔇</div>Mute everyone on mic</div>`);
     rows.push(`<div class="sheet-action-row" data-more-action="lock-seats"><div class="ic">${STATE.seatsLocked?'🔓':'🔒'}</div>${STATE.seatsLocked?'Unlock seats':'Lock seats'}</div>`);
     rows.push(`<div class="sheet-action-row" data-more-action="settings"><div class="ic">⚙️</div>Room settings</div>`);
+    rows.push(`<div class="sheet-action-row danger" data-more-action="end-room"><div class="ic">🛑</div>End room for everyone</div>`);
   } else {
     rows.push(`<div class="sheet-action-row" data-more-action="report"><div class="ic">🚩</div>Report room</div>`);
     rows.push(`<div class="sheet-action-row danger" data-more-action="block"><div class="ic">🚫</div>Block host</div>`);
@@ -1148,6 +1267,7 @@ function handleRoomMoreAction(action){
     showToast(STATE.seatsLocked ? 'Seats locked' : 'Seats unlocked', 'info');
   }
   else if(action==='settings'){ showToast('Room settings (demo)', 'info'); }
+  else if(action==='end-room'){ openModal('end-room-modal'); }
   else if(action==='report'){ showToast('Report submitted — thanks for keeping Vibra safe', 'success'); }
   else if(action==='block'){ showToast('Host blocked', 'success'); leaveRoom(); }
   else if(action==='leave'){ leaveRoom(); }
@@ -1181,17 +1301,29 @@ function updateGiftAffordability(){
   });
 }
 function sendGift(){
-  if(!VIBRA_CONFIG.DEMO_DATA){
-    // The old flow only edited a localStorage balance (forgeable, never reached the
-    // recipient). Real gifting through the Django ledger is Phase 3.
-    closeModal('gift-modal');
-    showToast('Gifting goes live in the next update', 'info');
-    return;
-  }
   if(!STATE.selectedGift){ showToast('Choose a gift first', 'error'); return; }
   const gift = DATA.giftCatalog.find(g=>g.id===STATE.selectedGift);
   const balance = getWallet();
   if(balance < gift.cost){ showToast("You don't have enough coins", 'error'); return; }
+
+  const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
+  const recipientId = STATE.giftRecipient && (STATE.giftRecipient.srcUserId || STATE.giftRecipient.userId || STATE.giftRecipient.id);
+
+  if(!VIBRA_CONFIG.DEMO_DATA && isApiRoom && recipientId && typeof recipientId === 'number'){
+    const giftNumericId = parseInt(String(gift.id).replace(/\D/g, '') || '1', 10);
+    closeModal('gift-modal');
+    Api.sendGift(STATE.activeRoom.id, recipientId, giftNumericId, 1).then((res)=>{
+      STATE.walletBalance = res.balance;
+      playGiftAnimation(gift.emoji, gift.cost, 1);
+      updateWalletUI();
+      showToast('Gift sent! 🎁', 'success');
+      appendChatMessage({who:'me', gift:true, text:`🎉 You sent a ${gift.name} to ${STATE.giftRecipient.name.split(' ')[0]}`});
+    }).catch(err => {
+      showToast(err.message || 'Could not send gift', 'error');
+    });
+    return;
+  }
+
   setWallet(balance - gift.cost);
 
   const tx = Storage.get(Storage.KEYS.TX, []);
@@ -1807,8 +1939,95 @@ function bindRoomScreen(){
     else if(action === 'gift'){ const seat = currentSeats()[idx]; closeModal('seat-profile-modal'); openGiftModal(seatUserForActions(seat), idx); }
     else if(action === 'profile'){ const seat = currentSeats()[idx]; closeModal('seat-profile-modal'); if(seat.srcUserId) openUserProfile(seat.srcUserId); }
     else if(action === 'message'){ const seat = currentSeats()[idx]; closeModal('seat-profile-modal'); if(seat.srcUserId) openDM(seat.srcUserId); else showToast('Messaging (demo)', 'info'); }
-    else if(action === 'remove'){ removeFromSeat(idx); }
+    else if(action === 'force-mute'){
+      const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
+      if(isApiRoom){
+        Api.forceMute(STATE.activeRoom.id, idx).then(() => {
+          const seat = currentSeats()[idx];
+          if(seat) seat.muted = true;
+          renderMicGrid();
+          closeModal('seat-profile-modal');
+          showToast('Speaker muted', 'info');
+        }).catch(e => showToast(e.message || 'Could not mute speaker', 'error'));
+      } else {
+        const seat = currentSeats()[idx];
+        if(seat) seat.muted = !seat.muted;
+        renderMicGrid();
+        closeModal('seat-profile-modal');
+        showToast('Speaker mute toggled', 'info');
+      }
+    }
+    else if(action === 'lock-seat'){
+      const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
+      if(isApiRoom){
+        Api.lockSeat(STATE.activeRoom.id, idx).then((res) => {
+          scheduleRoomRefresh(STATE.activeRoom.id);
+          closeModal('seat-profile-modal');
+          showToast(res.is_locked ? 'Seat locked' : 'Seat unlocked', 'info');
+        }).catch(e => showToast(e.message || 'Could not lock seat', 'error'));
+      } else {
+        const seat = currentSeats()[idx];
+        if(seat) seat.locked = !seat.locked;
+        renderMicGrid();
+        closeModal('seat-profile-modal');
+        showToast('Seat lock toggled', 'info');
+      }
+    }
+    else if(action === 'remove'){
+      const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
+      const seat = currentSeats()[idx];
+      if(isApiRoom && seat && seat.userId){
+        Api.kickParticipant(STATE.activeRoom.id, seat.userId).then(() => {
+          scheduleRoomRefresh(STATE.activeRoom.id);
+          closeModal('seat-profile-modal');
+          showToast('User removed from mic', 'info');
+        }).catch(e => showToast(e.message || 'Could not remove user', 'error'));
+      } else {
+        removeFromSeat(idx);
+      }
+    }
   });
+
+  // quick reaction emojis
+  document.querySelectorAll('.quick-reaction-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const emoji = btn.dataset.reaction || '❤️';
+      spawnFloatingReaction(emoji);
+      if(STATE.roomSocket && STATE.roomSocket.readyState === WebSocket.OPEN){
+        try{
+          STATE.roomSocket.send(JSON.stringify({ type: 'reaction', emoji }));
+        }catch(err){ console.error('failed sending reaction', err); }
+      }
+    });
+  });
+
+  // End room modal confirm
+  const confirmEndRoomBtn = document.getElementById('confirm-end-room');
+  if(confirmEndRoomBtn){
+    confirmEndRoomBtn.addEventListener('click', () => {
+      closeModal('end-room-modal');
+      const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
+      if(isApiRoom){
+        const roomId = STATE.activeRoom.id;
+        Api.endRoom(roomId).then(() => {
+          leaveRoom();
+          refreshApiRooms().then(renderHome);
+          showToast('Room ended successfully', 'success');
+        }).catch(e => showToast(e.message || 'Could not end room', 'error'));
+      } else {
+        leaveRoom();
+        showToast('Room ended', 'info');
+      }
+    });
+  }
+
+  // Tapping online count opens participants drawer
+  const onlineCountEl = document.getElementById('room-online-count');
+  if(onlineCountEl){
+    onlineCountEl.addEventListener('click', () => {
+      document.getElementById('vc-participants').click();
+    });
+  }
 
   document.getElementById('emoji-toggle').addEventListener('click', ()=>{
     document.getElementById('emoji-picker').classList.toggle('show');

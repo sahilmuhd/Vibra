@@ -201,8 +201,28 @@ const Api = {
     return this.request(`/rooms/${roomId}/seats/${position}/mute/`, { method: "POST" });
   },
 
+  async forceMute(roomId, position) {
+    return this.request(`/rooms/${roomId}/seats/${position}/force-mute/`, { method: "POST" });
+  },
+
+  async lockSeat(roomId, position) {
+    return this.request(`/rooms/${roomId}/seats/${position}/lock/`, { method: "POST" });
+  },
+
+  async kickParticipant(roomId, userId) {
+    return this.request(`/rooms/${roomId}/kick/`, { method: "POST", body: { user_id: userId } });
+  },
+
+  async endRoom(roomId) {
+    return this.request(`/rooms/${roomId}/end/`, { method: "POST" });
+  },
+
   async raiseHand(roomId) {
     return this.request(`/rooms/${roomId}/hand-raise/`, { method: "POST" });
+  },
+
+  async lowerHand(roomId) {
+    return this.request(`/rooms/${roomId}/hand-raise/`, { method: "DELETE" });
   },
 
   // ---- voice (LiveKit) ----

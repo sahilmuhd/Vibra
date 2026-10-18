@@ -36,7 +36,7 @@ class RoomListCreateView(generics.ListCreateAPIView):
     serializer_class = RoomListSerializer
 
     def get_queryset(self):
-        qs = room_queryset().filter(is_live=True).order_by("-created_at")
+        qs = room_queryset().filter(is_live=True).order_by("-created_at", "-id")
         category = (self.request.query_params.get("category") or "").strip().lower()
         if category:
             qs = qs.filter(category=category)
@@ -119,19 +119,23 @@ class TakeSeatView(APIView):
 
     def post(self, request, room_id, position):
         room = get_object_or_404(Room, id=room_id)
-        seat = get_object_or_404(Seat, room=room, position=position)
+        if not room.is_live:
+            return Response({"detail": "This room has ended."}, status=status.HTTP_410_GONE)
 
-        if seat.user_id is not None:
-            return Response({"detail": "Seat taken."}, status=status.HTTP_409_CONFLICT)
-        if seat.is_locked and room.host_id != request.user.id:
-            return Response({"detail": "Seat locked."}, status=status.HTTP_403_FORBIDDEN)
+        with transaction.atomic():
+            seat = get_object_or_404(Seat.objects.select_for_update(), room=room, position=position)
 
-        # Free any seat this user already holds in the room (one seat per user)
-        Seat.objects.filter(room=room, user=request.user).update(user=None, is_muted=True)
+            if seat.user_id is not None:
+                return Response({"detail": "Seat taken."}, status=status.HTTP_409_CONFLICT)
+            if seat.is_locked and room.host_id != request.user.id:
+                return Response({"detail": "Seat locked."}, status=status.HTTP_403_FORBIDDEN)
 
-        seat.user = request.user
-        seat.save(update_fields=["user"])
-        HandRaise.objects.filter(room=room, user=request.user).delete()
+            # Free any seat this user already holds in the room (one seat per user)
+            Seat.objects.filter(room=room, user=request.user).update(user=None, is_muted=True)
+
+            seat.user = request.user
+            seat.save(update_fields=["user"])
+            HandRaise.objects.filter(room=room, user=request.user).delete()
 
         broadcast_to_room(room.id, "seat.update", {
             "position": position, "user_id": request.user.id, "action": "taken",
@@ -171,9 +175,140 @@ class RaiseHandView(APIView):
 
     def post(self, request, room_id):
         room = get_object_or_404(Room, id=room_id)
-        hand, _ = HandRaise.objects.get_or_create(room=room, user=request.user)
+        if not room.is_live:
+            return Response({"detail": "This room has ended."}, status=status.HTTP_410_GONE)
+
+        hand = HandRaise.objects.filter(room=room, user=request.user).first()
+        if hand:
+            hand.delete()
+            broadcast_to_room(room.id, "hand.lowered", {"user_id": request.user.id})
+            return Response({"raised": False}, status=status.HTTP_200_OK)
+
+        hand = HandRaise.objects.create(room=room, user=request.user)
         broadcast_to_room(room.id, "hand.raised", HandRaiseSerializer(hand).data)
-        return Response(status=status.HTTP_201_CREATED)
+        return Response({"raised": True, **HandRaiseSerializer(hand).data}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, room_id):
+        room = get_object_or_404(Room, id=room_id)
+        deleted, _ = HandRaise.objects.filter(room=room, user=request.user).delete()
+        if deleted:
+            broadcast_to_room(room.id, "hand.lowered", {"user_id": request.user.id})
+        return Response({"raised": False}, status=status.HTTP_200_OK)
+
+
+class EndRoomView(APIView):
+    """Host-only: marks room as ended, frees seats, hand raises, and participants."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, room_id):
+        room = get_object_or_404(Room, id=room_id)
+        if room.host_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied("Only the host can end this room.")
+
+        if not room.is_live:
+            return Response({"detail": "Room already ended."}, status=status.HTTP_200_OK)
+
+        with transaction.atomic():
+            room.is_live = False
+            room.save(update_fields=["is_live"])
+            Seat.objects.filter(room=room).update(user=None, is_muted=True)
+            HandRaise.objects.filter(room=room).delete()
+            RoomParticipant.objects.filter(room=room).delete()
+
+        broadcast_to_room(room.id, "room.ended", {"room_id": room.id})
+        return Response({"ended": True, "room_id": room.id}, status=status.HTTP_200_OK)
+
+
+class ForceMuteSeatView(APIView):
+    """Host-only: force-mutes an occupied speaker seat."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, room_id, position):
+        room = get_object_or_404(Room, id=room_id)
+        if room.host_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied("Only the host can mute other speakers.")
+
+        seat = get_object_or_404(Seat, room=room, position=position)
+        if seat.user_id is None:
+            return Response({"detail": "Seat is unoccupied."}, status=status.HTTP_400_BAD_REQUEST)
+
+        seat.is_muted = True
+        seat.save(update_fields=["is_muted"])
+        broadcast_to_room(room.id, "seat.mute", {"position": position, "is_muted": True, "forced": True})
+        return Response({"position": position, "is_muted": True})
+
+
+class LockSeatView(APIView):
+    """Host-only: toggles seat lock status. Locking an occupied seat removes any non-host occupant."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, room_id, position):
+        room = get_object_or_404(Room, id=room_id)
+        if room.host_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied("Only the host can lock or unlock seats.")
+
+        evicted_user_id = None
+        with transaction.atomic():
+            seat = get_object_or_404(Seat.objects.select_for_update(), room=room, position=position)
+            seat.is_locked = not seat.is_locked
+            if seat.is_locked and seat.user_id and seat.user_id != room.host_id:
+                evicted_user_id = seat.user_id
+                seat.user = None
+                seat.is_muted = True
+            seat.save(update_fields=["is_locked", "user", "is_muted"])
+
+        broadcast_to_room(room.id, "seat.lock", {
+            "position": position,
+            "is_locked": seat.is_locked,
+            "evicted_user_id": evicted_user_id,
+        })
+        if evicted_user_id:
+            broadcast_to_room(room.id, "seat.update", {"position": position, "action": "left"})
+
+        return Response({"position": position, "is_locked": seat.is_locked})
+
+
+class KickParticipantView(APIView):
+    """Host-only: removes a participant from the room, freeing their seat if speaking."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, room_id):
+        room = get_object_or_404(Room, id=room_id)
+        if room.host_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied("Only the host can kick participants.")
+
+        target_user_id = request.data.get("user_id")
+        if not target_user_id:
+            return Response({"detail": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            target_user_id = int(target_user_id)
+        except (ValueError, TypeError):
+            return Response({"detail": "Invalid user_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if target_user_id == room.host_id:
+            return Response({"detail": "Host cannot kick themselves."}, status=status.HTTP_400_BAD_REQUEST)
+
+        freed_seats = []
+        with transaction.atomic():
+            for seat in Seat.objects.select_for_update().filter(room=room, user_id=target_user_id):
+                seat.user = None
+                seat.is_muted = True
+                seat.save(update_fields=["user", "is_muted"])
+                freed_seats.append(seat.position)
+
+            HandRaise.objects.filter(room=room, user_id=target_user_id).delete()
+            removed, _ = RoomParticipant.objects.filter(room=room, user_id=target_user_id).delete()
+
+        for pos in freed_seats:
+            broadcast_to_room(room.id, "seat.update", {"position": pos, "action": "left"})
+
+        broadcast_to_room(room.id, "participant.kicked", {
+            "user_id": target_user_id,
+            "online_count": RoomParticipant.objects.filter(room=room).count(),
+        })
+
+        return Response({"kicked": True, "user_id": target_user_id, "released_seats": freed_seats})
 
 
 class MessageListCreateView(generics.ListCreateAPIView):

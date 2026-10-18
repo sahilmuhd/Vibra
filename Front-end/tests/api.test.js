@@ -114,6 +114,26 @@ test('join / leave / list endpoints', async () => {
   assert.deepEqual(urls, ['POST /rooms/5/join/', 'POST /rooms/5/leave/', 'GET /rooms/', 'GET /rooms/?category=music', 'GET /rooms/']);
 });
 
+test('host moderation & hand raise endpoints', async () => {
+  const fetch = makeFetch(() => ({ json: {} }));
+  const { Api } = loadApi({ fetch });
+  Api.setTokens('A', 'R');
+  await Api.endRoom(5);
+  await Api.forceMute(5, 1);
+  await Api.lockSeat(5, 2);
+  await Api.kickParticipant(5, 42);
+  await Api.lowerHand(5);
+  const urls = fetch.calls.map((c) => `${c.method} ${c.url.replace('http://localhost:8000/api', '')}`);
+  assert.deepEqual(urls, [
+    'POST /rooms/5/end/',
+    'POST /rooms/5/seats/1/force-mute/',
+    'POST /rooms/5/seats/2/lock/',
+    'POST /rooms/5/kick/',
+    'DELETE /rooms/5/hand-raise/',
+  ]);
+  assert.deepEqual(fetch.calls[3].body, { user_id: 42 });
+});
+
 test('leaveRoomOnExit uses keepalive, no retry, and never throws', async () => {
   const fetch = makeFetch(() => ({ status: 401, json: {} }));
   const { Api } = loadApi({ fetch });

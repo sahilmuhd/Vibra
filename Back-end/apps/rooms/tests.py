@@ -278,3 +278,81 @@ class WebSocketTests(TransactionTestCase):
         comm = WebsocketCommunicator(self.app, f"/ws/rooms/999999/?token={AccessToken.for_user(self.host)}")
         connected, _ = await comm.connect()
         self.assertFalse(connected)
+
+
+class HostModerationTests(RoomBase):
+    def setUp(self):
+        super().setUp()
+        self.rid = self.create_room().data["id"]
+        self.alice_c.post(f"/api/rooms/{self.rid}/join/")
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/take/")
+
+    def test_end_room_by_host_clears_participants_and_seats(self):
+        with mock.patch("apps.rooms.views.broadcast_to_room") as bc:
+            res = self.host_c.post(f"/api/rooms/{self.rid}/end/")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["ended"])
+        room = Room.objects.get(id=self.rid)
+        self.assertFalse(room.is_live)
+        self.assertEqual(Seat.objects.filter(room_id=self.rid).exclude(user=None).count(), 0)
+        self.assertEqual(RoomParticipant.objects.filter(room_id=self.rid).count(), 0)
+        bc.assert_called_once_with(self.rid, "room.ended", {"room_id": self.rid})
+
+    def test_end_room_forbidden_for_non_host(self):
+        res = self.alice_c.post(f"/api/rooms/{self.rid}/end/")
+        self.assertEqual(res.status_code, 403)
+        self.assertTrue(Room.objects.get(id=self.rid).is_live)
+
+    def test_force_mute_by_host(self):
+        # Alice is in seat 1
+        with mock.patch("apps.rooms.views.broadcast_to_room") as bc:
+            res = self.host_c.post(f"/api/rooms/{self.rid}/seats/1/force-mute/")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(Seat.objects.get(room_id=self.rid, position=1).is_muted)
+        bc.assert_called_once_with(self.rid, "seat.mute", {"position": 1, "is_muted": True, "forced": True})
+
+        # Non-host cannot force mute
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/seats/0/force-mute/").status_code, 403)
+
+    def test_lock_seat_evicts_occupant(self):
+        with mock.patch("apps.rooms.views.broadcast_to_room") as bc:
+            res = self.host_c.post(f"/api/rooms/{self.rid}/seats/1/lock/")
+        self.assertEqual(res.status_code, 200)
+        seat = Seat.objects.get(room_id=self.rid, position=1)
+        self.assertTrue(seat.is_locked)
+        self.assertIsNone(seat.user)  # Alice was evicted
+        events = [c.args[1] for c in bc.call_args_list]
+        self.assertIn("seat.lock", events)
+        self.assertIn("seat.update", events)
+
+    def test_kick_participant_frees_seat_and_removes(self):
+        with mock.patch("apps.rooms.views.broadcast_to_room") as bc:
+            res = self.host_c.post(f"/api/rooms/{self.rid}/kick/", {"user_id": self.alice.id}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["kicked"])
+        self.assertFalse(RoomParticipant.objects.filter(room_id=self.rid, user=self.alice).exists())
+        self.assertIsNone(Seat.objects.get(room_id=self.rid, position=1).user)
+
+        # Host cannot kick themselves
+        res_self = self.host_c.post(f"/api/rooms/{self.rid}/kick/", {"user_id": self.host.id}, format="json")
+        self.assertEqual(res_self.status_code, 400)
+
+    def test_raise_hand_toggle_and_delete(self):
+        # 1. Raise hand
+        r1 = self.alice_c.post(f"/api/rooms/{self.rid}/hand-raise/")
+        self.assertEqual(r1.status_code, 201)
+        self.assertTrue(r1.data["raised"])
+        self.assertTrue(HandRaise.objects.filter(room_id=self.rid, user=self.alice).exists())
+
+        # 2. Call again -> toggles off
+        r2 = self.alice_c.post(f"/api/rooms/{self.rid}/hand-raise/")
+        self.assertEqual(r2.status_code, 200)
+        self.assertFalse(r2.data["raised"])
+        self.assertFalse(HandRaise.objects.filter(room_id=self.rid, user=self.alice).exists())
+
+        # 3. Raise and then DELETE
+        self.alice_c.post(f"/api/rooms/{self.rid}/hand-raise/")
+        r3 = self.alice_c.delete(f"/api/rooms/{self.rid}/hand-raise/")
+        self.assertEqual(r3.status_code, 200)
+        self.assertFalse(HandRaise.objects.filter(room_id=self.rid, user=self.alice).exists())
+

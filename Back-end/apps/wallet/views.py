@@ -124,10 +124,9 @@ class SendGiftView(APIView):
 
         room = get_object_or_404(Room, id=data["room_id"])
         gift = get_object_or_404(Gift, id=data["gift_id"])
-        recipient = get_object_or_404(
-            Room.objects.get(id=data["room_id"]).seats.model._meta.get_field("user").related_model,
-            id=data["recipient_id"],
-        )
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        recipient = get_object_or_404(User, id=data["recipient_id"])
 
         event = send_gift(
             sender=request.user, recipient=recipient, gift=gift, room=room, combo=data["combo"]
@@ -144,8 +143,11 @@ class SendGiftView(APIView):
             {
                 "type": "gift.sent",
                 "sender_id": request.user.id,
+                "sender_name": request.user.username,
                 "recipient_id": recipient.id,
                 "gift_id": gift.id,
+                "gift_name": gift.name,
+                "gift_emoji": gift.emoji,
                 "combo": data["combo"],
             },
         )

@@ -723,6 +723,57 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .msg-list-row:hover{ background:var(--surface-glass); }
 .notif-row:hover{ background:var(--surface-glass); }
 
+/* Connection status indicator */
+.connection-status-pill{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:10px; font-weight:700; padding:2px 8px; border-radius:var(--radius-pill);
+  letter-spacing:.3px; text-transform:uppercase;
+  transition:all .2s ease;
+}
+.connection-status-pill .dot{ width:6px; height:6px; border-radius:50%; }
+.connection-status-pill.live{
+  background:rgba(74,222,128,0.12); color:var(--success); border:1px solid rgba(74,222,128,0.25);
+}
+.connection-status-pill.live .dot{ background:var(--success); box-shadow:0 0 6px var(--success); }
+.connection-status-pill.reconnecting{
+  background:rgba(255,200,87,0.15); color:var(--gold); border:1px solid rgba(255,200,87,0.3);
+  animation:reconnectPulse 1.2s infinite ease-in-out;
+}
+.connection-status-pill.reconnecting .dot{ background:var(--gold); }
+@keyframes reconnectPulse{ 0%,100%{opacity:1;} 50%{opacity:.5;} }
+
+/* Floating reactions stream (TikTok / Clubhouse style) */
+.floating-reactions-container{
+  position:absolute; bottom:85px; right:16px; width:70px; height:280px;
+  pointer-events:none; z-index:45; overflow:hidden;
+}
+.floating-emoji{
+  position:absolute; bottom:0; font-size:26px;
+  animation:floatUpAndFade 2.2s cubic-bezier(.22,.8,.36,1) forwards;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+}
+@keyframes floatUpAndFade{
+  0%{ transform:translateY(0) scale(0.6) rotate(0deg); opacity:0; }
+  15%{ transform:translateY(-30px) scale(1.2) rotate(var(--rot, 0deg)); opacity:1; }
+  80%{ opacity:.85; }
+  100%{ transform:translateY(-260px) scale(0.9) rotate(var(--rot-end, 15deg)); opacity:0; }
+}
+
+/* Quick reaction bar */
+.quick-reaction-bar{
+  display:flex; align-items:center; justify-content:flex-end; gap:6px;
+  padding:4px 14px 2px;
+}
+.quick-reaction-btn{
+  width:32px; height:32px; border-radius:50%;
+  background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.09);
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; cursor:pointer; transition:transform .12s cubic-bezier(.2,1,.3,1), background .15s;
+}
+.quick-reaction-btn:hover{ background:rgba(255,255,255,0.14); transform:scale(1.15); }
+.quick-reaction-btn:active{ transform:scale(0.85); }
+.mic-seat.locked .avatar-frame{ border-color:rgba(255,200,87,0.4); color:var(--gold); }
+
 /* ==========================================================================
    GIFT MODAL / MODALS
    ========================================================================== */
@@ -1307,12 +1358,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       <button class="back-btn" id="room-back" aria-label="Leave room">←</button>
       <div class="title-block">
         <h2 id="room-title">Room</h2>
-        <div class="sub" id="room-online-count">0 online</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="sub" id="room-online-count" style="cursor:pointer;" title="View participants">0 online</div>
+          <span class="connection-status-pill live" id="room-connection-status"><span class="dot"></span>Live</span>
+        </div>
       </div>
       <button class="icon-btn" id="room-share" aria-label="Share room"><i data-lucide="share-2"></i></button>
       <button class="icon-btn" id="room-more" aria-label="Room options"><i data-lucide="more-vertical"></i></button>
     </div>
     <div class="ov-body" style="display:flex; flex-direction:column; padding:0; overflow:hidden; position:relative;">
+      <div id="floating-reactions-container" class="floating-reactions-container"></div>
       <div class="voice-area">
         <div class="host-block">
           <div class="vibra-ring" id="host-ring"><img class="avatar" id="host-avatar" src="" alt=""></div>
@@ -1325,6 +1380,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       <button class="scroll-bottom-fab" id="scroll-bottom-fab"><span class="dot"></span>New messages</button>
     </div>
     <div style="position:relative;">
+      <div class="quick-reaction-bar" id="quick-reaction-bar">
+        <button type="button" class="quick-reaction-btn" data-reaction="❤️" title="Love">❤️</button>
+        <button type="button" class="quick-reaction-btn" data-reaction="🔥" title="Fire">🔥</button>
+        <button type="button" class="quick-reaction-btn" data-reaction="👏" title="Applause">👏</button>
+        <button type="button" class="quick-reaction-btn" data-reaction="😂" title="Laugh">😂</button>
+        <button type="button" class="quick-reaction-btn" data-reaction="🎉" title="Party">🎉</button>
+      </div>
       <div class="reply-preview" id="reply-preview">
         <div class="bar"></div>
         <div class="body"><span class="who" id="reply-who"></span><div class="snip" id="reply-snip"></div></div>
@@ -1492,6 +1554,20 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       <div class="sheet-handle"></div>
       <div class="sheet-title">Room options <button class="icon-btn" aria-label="Close" data-close-modal="room-more-modal">✕</button></div>
       <div id="room-more-list"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop center-align" id="end-room-modal">
+    <div class="modal-sheet center">
+      <div class="confirm-box">
+        <div class="ic">🛑</div>
+        <h3>End this room?</h3>
+        <p>This will close the room for everyone and release all seats.</p>
+        <div class="confirm-actions">
+          <button class="btn btn-glass" data-close-modal="end-room-modal">Cancel</button>
+          <button class="btn btn-danger" id="confirm-end-room">End Room</button>
+        </div>
+      </div>
     </div>
   </div>
 
