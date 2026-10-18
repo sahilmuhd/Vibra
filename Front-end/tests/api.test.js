@@ -6,7 +6,7 @@ const TOKENS = { access: 'ACC1', refresh: 'REF1' };
 
 test('API base defaults: localhost in dev, Render in production, overridable', () => {
   assert.equal(loadApi({ fetch: makeFetch(() => ({})), hostname: 'localhost' }).API_BASE, 'http://localhost:8000/api');
-  assert.equal(loadApi({ fetch: makeFetch(() => ({})), hostname: 'vibra.example.com' }).API_BASE, 'https://vibra-backend-vac1.onrender.com/api');
+  assert.equal(loadApi({ fetch: makeFetch(() => ({})), hostname: 'vibra.example.com' }).API_BASE, 'https://vibra-backend-aqgg.onrender.com/api');
   const o = loadApi({ fetch: makeFetch(() => ({})), config: { API_BASE: 'https://api.test/api', DEMO_DATA: true } });
   assert.equal(o.API_BASE, 'https://api.test/api');
   assert.equal(o.VIBRA_CONFIG.DEMO_DATA, true);
@@ -148,7 +148,7 @@ test('websocket URL: ws/wss scheme, /api stripped, token URL-encoded', () => {
   dev.Api.setTokens('a.b+c/d=', 'r');
   assert.equal(dev.Api.wsUrl(3), 'ws://localhost:8000/ws/rooms/3/?token=a.b%2Bc%2Fd%3D');
   const prod = loadApi({ fetch: makeFetch(() => ({})), hostname: 'vibra.example.com' });
-  assert.match(prod.Api.wsUrl(3), /^wss:\/\/vibra-backend-vac1\.onrender\.com\/ws\/rooms\/3\/\?token=/);
+  assert.match(prod.Api.wsUrl(3), /^wss:\/\/vibra-backend-aqgg\.onrender\.com\/ws\/rooms\/3\/\?token=/);
   dev.Api.connectRoomSocket(3, () => {});
   assert.match(dev.FakeWS.last, /^ws:\/\/localhost:8000\/ws\/rooms\/3\//);
 });
