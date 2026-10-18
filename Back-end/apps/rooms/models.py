@@ -26,6 +26,22 @@ class Room(models.Model):
         return self.name
 
 
+class RoomParticipant(models.Model):
+    """Who is currently *in* a room (listeners and speakers alike).
+
+    Seats only describe the mic grid; before this model existed a listener was
+    invisible to the backend, so online counts only counted speakers and there
+    was nothing to clean up on leave. Join/leave endpoints maintain this table.
+    """
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="+")
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("room", "user")
+        ordering = ["joined_at"]
+
+
 class Seat(models.Model):
     """A room's mic grid. One row per seat position, created up-front when
     the Room is created (seat_count rows, position 0..N-1)."""

@@ -17,6 +17,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     """
 
     async def connect(self):
+        self._announced = False  # only announce "left" for connections that announced "joined"
         self.user = self.scope.get("user")
         self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
         self.group_name = f"room_{self.room_id}"
@@ -32,13 +33,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        self._announced = True
         await self.channel_layer.group_send(
             self.group_name,
             {"type": "presence_update", "payload": {"user_id": self.user.id, "action": "joined"}},
         )
 
     async def disconnect(self, close_code):
-        if hasattr(self, "group_name"):
+        # Previously this ran for rejected connections too, letting an
+        # unauthenticated socket broadcast {"user_id": null, "action": "left"}
+        # into any room's group.
+        if getattr(self, "_announced", False):
             await self.channel_layer.group_send(
                 self.group_name,
                 {"type": "presence_update", "payload": {"user_id": self.user.id, "action": "left"}},
@@ -50,6 +55,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         # directly — e.g. "I am currently speaking" volume ticks for the
         # mic-pulse animation. Anything that changes stored state (messages,
         # seats, gifts) must go through the REST endpoints instead.
+        if not isinstance(content, dict):
+            return
         if content.get("type") == "speaking_tick":
             await self.channel_layer.group_send(
                 self.group_name,

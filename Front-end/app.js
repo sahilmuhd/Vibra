@@ -28,6 +28,8 @@ const STATE = {
   roomTimers: [],       // interval ids for the currently open room
   apiRooms: [],         // rooms fetched from the real backend (Api.listRooms)
   roomSocket: null,     // active WebSocket for the currently open API room
+  roomRefreshTimer: null, // debounce handle for re-syncing seats/online count after WS events
+  walletBalance: 0,     // server-side coin balance (real mode); localStorage wallet is DEMO_DATA only
   liveKitRoom: null,    // active LiveKit Room instance (real voice) for the currently open API room
 };
 
@@ -58,6 +60,9 @@ const Storage = {
 };
 
 function initStorageDefaults(){
+  // Real mode never seeds a fake wallet/transactions/rooms into localStorage
+  // (the old 12,500-coin default was forgeable by editing localStorage).
+  if(!VIBRA_CONFIG.DEMO_DATA) return;
   if(!Storage.get(Storage.KEYS.ACCOUNTS)) Storage.set(Storage.KEYS.ACCOUNTS, []);
   if(Storage.get(Storage.KEYS.WALLET) === null) Storage.set(Storage.KEYS.WALLET, 12500);
   if(!Storage.get(Storage.KEYS.TX)) Storage.set(Storage.KEYS.TX, [
@@ -70,7 +75,11 @@ function initStorageDefaults(){
   if(!Storage.get(Storage.KEYS.GIFT_HISTORY)) Storage.set(Storage.KEYS.GIFT_HISTORY, []);
 }
 
-function getRooms(){ return [...STATE.apiRooms, ...Storage.get(Storage.KEYS.ROOMS, DATA.rooms)]; }
+// Real mode: backend rooms only. DEMO_DATA=true re-adds the mock rooms for offline UI demos.
+function getRooms(){
+  if(VIBRA_CONFIG.DEMO_DATA) return [...STATE.apiRooms, ...Storage.get(Storage.KEYS.ROOMS, DATA.rooms)];
+  return [...STATE.apiRooms];
+}
 
 /* ---- real backend rooms (Api.listRooms) — kept separate from the mock
    DATA.rooms array and merged in by getRooms() above ---- */
@@ -99,10 +108,17 @@ async function refreshApiRooms(){
     STATE.apiRooms = rooms.map(apiRoomToLocal);
   }catch(e){
     console.error('Could not load rooms from server', e);
+    if(e.status !== 401) showToast(e.message || 'Could not load rooms', 'error');
   }
 }
-function getWallet(){ return Storage.get(Storage.KEYS.WALLET, 0); }
-function setWallet(v){ Storage.set(Storage.KEYS.WALLET, Math.max(0, v)); }
+// Real mode: the balance is whatever the server ledger says (refreshWallet).
+function getWallet(){ return VIBRA_CONFIG.DEMO_DATA ? Storage.get(Storage.KEYS.WALLET, 0) : (STATE.walletBalance || 0); }
+function setWallet(v){ if(VIBRA_CONFIG.DEMO_DATA) Storage.set(Storage.KEYS.WALLET, Math.max(0, v)); }
+async function refreshWallet(){
+  if(VIBRA_CONFIG.DEMO_DATA) return;
+  try{ STATE.walletBalance = (await Api.getBalance()).balance || 0; }
+  catch(e){ console.error('Could not load wallet balance', e); }
+}
 
 /* ---------------------------- TOAST (app.js) ----------------------------- */
 // Deterministic "random" based on a string seed — used so decorative values
@@ -119,7 +135,7 @@ function showToast(message, type){
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   const icon = type==='success' ? '✅' : type==='error' ? '⚠️' : '💬';
-  el.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+  el.innerHTML = `<span>${icon}</span><span>${escapeHTML(message)}</span>`;
   stack.appendChild(el);
   setTimeout(()=> el.remove(), 3000);
 }
@@ -141,6 +157,10 @@ function navigateTo(tabName){
     openOverlay('screen-create-room');
     navigateTo('home');
     return;
+  }
+  if(tabName === 'home' || tabName === 'discover'){
+    // Always show fresh server state; first paint uses whatever is cached.
+    refreshApiRooms().then(()=>{ renderHome(); renderDiscoverTab(); });
   }
   if(tabName === 'profile'){
     renderOwnProfile();
@@ -202,23 +222,31 @@ function validateLogin(){
   return ok;
 }
 
+// Maps the backend Profile payload (GET /auth/me/) to the UI's account shape.
+function profileToAccount(p){
+  return {
+    id: p.id,
+    name: p.username, username: p.username,
+    avatar: p.avatar_url || DATA.avatarFor(p.username),
+    level: p.level || 1,
+    bio: p.bio || '', country: p.country || '',
+    followers: p.followers_count || 0, following: p.following_count || 0,
+  };
+}
+
 async function doLogin(identifier, password){
   try{
     const profile = await Api.login({ username: identifier, password });
-    loginAs({
-      name: profile.username, username: profile.username,
-      email: identifier.includes('@') ? identifier : '',
-      avatar: profile.avatar_url || DATA.avatarFor(profile.username),
-      level: profile.level,
-    });
+    loginAs(profileToAccount(profile));
   }catch(e){
     showToast(e.message || 'Login failed', 'error');
   }
 }
 
 function loginAs(account){
+  // The session is the JWT pair held by Api; the account object is just UI state
+  // and is deliberately NOT persisted (it used to be, and was trusted on reload).
   STATE.currentUser = account;
-  Storage.set(Storage.KEYS.USER, account);
   enterApp();
   showToast(`Welcome back, ${account.name.split(' ')[0]}!`, 'success');
 }
@@ -242,19 +270,28 @@ function enterApp(){
   document.getElementById('screen-signup').classList.add('hidden');
   document.getElementById('app-shell').classList.add('active');
   const u = STATE.currentUser;
-  document.getElementById('mini-avatar').src = u.avatar;
+  document.getElementById('mini-avatar').src = safeImgUrl(u.avatar);
   const hour = new Date().getHours();
   const g = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  document.getElementById('home-greeting').innerHTML = `${g}, ${u.name.split(' ')[0]}<span>Welcome back to Vibra</span>`;
+  document.getElementById('home-greeting').innerHTML = `${escapeHTML(g)}, ${escapeHTML(u.name.split(' ')[0])}<span>Welcome back to Vibra</span>`;
   if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; document.getElementById('desktop-right').style.display='block'; }
-  refreshApiRooms().then(renderHome);
+  const nb = document.getElementById('notif-badge');
+  if(nb && !VIBRA_CONFIG.DEMO_DATA) nb.style.display = 'none'; // static "3" in the markup is demo data
+  refreshWallet();
   renderHome();
-  navigateTo('home');
+  navigateTo('home'); // also refreshes the room list from the server
 }
 
 /* ---------------------------- HOME / ROOMS (home.js, rooms.js) ----------- */
 function renderStories(){
   const row = document.getElementById('stories-row');
+  const storiesSection = row.closest('.section');
+  if(!VIBRA_CONFIG.DEMO_DATA){            // "Active now" was fabricated users
+    if(storiesSection) storiesSection.classList.add('hidden');
+    row.innerHTML = '';
+    return;
+  }
+  if(storiesSection) storiesSection.classList.remove('hidden');
   let html = `<div class="story story-add"><div class="avatar-frame">+</div><span>Add Story</span></div>`;
   DATA.users.filter(u=>u.online).forEach(u=>{
     html += `<div class="story" data-open-profile="${u.id}">
@@ -289,23 +326,25 @@ function filteredRooms(searchTerm){
 }
 
 function roomCardHTML(room){
-  const host = DATA.getUser(room.hostId);
-  const avatars = DATA.users.slice(0,3).map(u=>`<img class="avatar" src="${u.avatar}">`).join('');
+  // Real mode shows the real host; the three fake attendee faces are demo-only.
+  const avatars = VIBRA_CONFIG.DEMO_DATA
+    ? DATA.users.slice(0,3).map(u=>`<img class="avatar" src="${imgSrc(u.avatar)}">`).join('')
+    : (room.hostDisplay ? `<img class="avatar" src="${imgSrc(room.hostDisplay.avatar)}">` : '');
   return `
-  <div class="room-card" data-room-id="${room.id}" style="--rgrad:${room.grad}">
+  <div class="room-card" data-room-id="${escapeAttr(room.id)}" style="--rgrad:${room.grad}">
     <div style="position:absolute; inset:0; background:${room.grad}; opacity:0.9; z-index:0;"></div>
     <div class="room-card-top">
       <span class="room-badge ${room.live?'live':''}">${room.live? '🔴 LIVE' : '⏸ OFFLINE'}</span>
-      <span class="room-cat">${room.category}</span>
+      <span class="room-cat">${escapeHTML(room.category)}</span>
     </div>
-    <div class="room-name">${room.name}</div>
-    <div class="room-desc">${room.desc}</div>
+    <div class="room-name">${escapeHTML(room.name)}</div>
+    <div class="room-desc">${escapeHTML(room.desc)}</div>
     <div class="room-card-bottom">
       <div style="display:flex; align-items:center;">
         <div class="room-avatars">${avatars}</div>
         <span class="room-online">${room.online.toLocaleString()} online</span>
       </div>
-      <button class="room-join" data-join-room="${room.id}">Join</button>
+      <button class="room-join" data-join-room="${escapeAttr(room.id)}">Join</button>
     </div>
   </div>`;
 }
@@ -318,13 +357,13 @@ function renderTrendingRooms(){
 
 function discoverRowHTML(room){
   const host = DATA.getUser(room.hostId) || room.hostDisplay;
-  return `<div class="discover-row" data-room-id="${room.id}">
+  return `<div class="discover-row" data-room-id="${escapeAttr(room.id)}">
     <div class="thumb" style="background:${room.grad};"></div>
     <div class="meta">
-      <div class="name">${room.name}</div>
-      <div class="sub">${host? host.name : 'Vibra'} · ${room.online.toLocaleString()} online · ${room.category}</div>
+      <div class="name">${escapeHTML(room.name)}</div>
+      <div class="sub">${escapeHTML(host? host.name : 'Vibra')} · ${room.online.toLocaleString()} online · ${escapeHTML(room.category)}</div>
     </div>
-    <button class="join-mini btn-glass" data-join-room="${room.id}">Join</button>
+    <button class="join-mini btn-glass" data-join-room="${escapeAttr(room.id)}">Join</button>
   </div>`;
 }
 
@@ -348,6 +387,10 @@ function renderHome(){
 function renderOnlineRail(){
   const rail = document.getElementById('online-users-rail');
   if(!rail) return;
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    rail.innerHTML = emptyStateHTML('👥','Presence is coming soon','Who is online will show up here.');
+    return;
+  }
   rail.innerHTML = DATA.users.filter(u=>u.online).map(u=>`
     <div class="online-user-row" data-open-profile="${u.id}">
       <div class="vibra-ring"><img class="avatar" src="${u.avatar}"><span class="online-dot"></span></div>
@@ -386,18 +429,26 @@ let speakerOn = true;
 /* =========================================================================
    ROOM / CHAT — seats, requests, ambient life, reply, mentions
    ========================================================================= */
+// Guards against double-taps on "Join" opening the room (and its socket/voice) twice.
 async function openRoom(roomId){
+  if(STATE.openingRoom) return;
+  STATE.openingRoom = true;
+  try{ await openRoomInner(roomId); }
+  finally{ STATE.openingRoom = false; }
+}
+async function openRoomInner(roomId){
   const isApiRoom = typeof roomId === 'number';
   let room = getRooms().find(r=>r.id===roomId);
   if(isApiRoom){
-    // Always fetch fresh detail for real rooms rather than trusting the
-    // possibly-stale card data (seat occupancy changes constantly).
+    // Join registers us as "in the room" server-side (online count, chat
+    // permission, cleanup on leave) and returns a fresh snapshot incl. seats.
     try{
-      const detail = await Api.getRoom(roomId);
+      const detail = await Api.joinRoom(roomId);
       room = apiRoomToLocal(detail);
       room._seats = detail.seats; // raw backend seat rows, converted below
     }catch(e){
-      showToast('Could not load room', 'error');
+      showToast(e.message || 'Could not join room', 'error');
+      refreshApiRooms().then(renderHome);   // e.g. the room ended: drop it from the list
       return;
     }
   }
@@ -412,24 +463,13 @@ async function openRoom(roomId){
 
   document.getElementById('room-title').textContent = room.name;
   document.getElementById('room-online-count').textContent = `${room.online.toLocaleString()} Online`;
-  document.getElementById('host-avatar').src = host.avatar;
+  document.getElementById('host-avatar').src = safeImgUrl(host.avatar);
   document.getElementById('host-name').textContent = host.name;
   document.getElementById('host-ring').classList.add('speaking');
 
   if(isApiRoom){
     // Build the seat grid from real backend rows instead of the seeded mock.
-    ROOM_SEATS_CACHE[roomId] = room._seats.map(s => s.user ? {
-      empty:false,
-      isMe: s.user.username === STATE.currentUser.username,
-      requesting:false,
-      name: s.user.username,
-      level: s.user.level,
-      avatar: s.user.avatar_url,
-      muted: s.is_muted,
-      speaking:false,
-      giftsReceived:0,
-      userId: s.user.id,
-    } : { empty:true });
+    ROOM_SEATS_CACHE[roomId] = seatsFromDetail({ seats: room._seats });
   } else if(!ROOM_SEATS_CACHE[roomId]){
     // seed seats once per room per session so reopening doesn't re-shuffle who's on mic
     ROOM_SEATS_CACHE[roomId] = DATA.participantsFor(roomId, 6);
@@ -482,6 +522,46 @@ async function openRoom(roomId){
   if(!isApiRoom) startRoomAmbience();
 }
 
+// Backend seat rows -> the UI's seat objects. "Me" is matched by numeric user id.
+function seatsFromDetail(detail){
+  const me = STATE.currentUser;
+  return detail.seats.map(s => s.user ? {
+    empty:false,
+    isMe: !!me && s.user.id === me.id,
+    requesting:false,
+    name: s.user.username,
+    level: s.user.level,
+    avatar: s.user.avatar_url,
+    muted: s.is_muted,
+    speaking:false,
+    giftsReceived:0,
+    userId: s.user.id,
+  } : { empty:true });
+}
+
+// Seat/presence events only say "something changed"; re-fetching the snapshot
+// (debounced) keeps every client identical to the server without trusting
+// partial event payloads.
+function scheduleRoomRefresh(roomId){
+  clearTimeout(STATE.roomRefreshTimer);
+  STATE.roomRefreshTimer = setTimeout(()=> refreshActiveRoom(roomId), 250);
+}
+async function refreshActiveRoom(roomId){
+  if(!STATE.activeRoom || STATE.activeRoom.id !== roomId) return;
+  try{
+    const detail = await Api.getRoom(roomId);
+    if(!STATE.activeRoom || STATE.activeRoom.id !== roomId) return; // left while fetching
+    const speaking = new Map((ROOM_SEATS_CACHE[roomId] || []).filter(s=>!s.empty).map(s=>[s.userId, s.speaking]));
+    ROOM_SEATS_CACHE[roomId] = seatsFromDetail(detail).map(s => s.empty ? s : Object.assign(s, { speaking: !!speaking.get(s.userId) }));
+    STATE.mySeatIndex = ROOM_SEATS_CACHE[roomId].findIndex(s=>s.isMe);
+    STATE.activeRoom.online = detail.online_count || 0;
+    document.getElementById('room-online-count').textContent = `${STATE.activeRoom.online.toLocaleString()} Online`;
+    renderMicGrid();
+  }catch(e){
+    console.error('Could not refresh room', e);
+  }
+}
+
 /* ---- real-time room WebSocket (API rooms only) ---- */
 function connectRoomSocket(roomId){
   if(STATE.roomSocket) STATE.roomSocket.close();
@@ -499,15 +579,9 @@ function connectRoomSocket(roomId){
         avatarUrl: event.user ? event.user.avatar_url : '',
       }));
       box.scrollTop = box.scrollHeight;
-    }else if(event.event === 'seat_update'){
-      const seats = ROOM_SEATS_CACHE[roomId];
-      if(!seats || !seats[event.position]) return;
-      if(event.action === 'left'){
-        seats[event.position] = { empty:true };
-      }
-      renderMicGrid();
-    }else if(event.event === 'presence_update'){
-      // lightweight: just nudge the online counter on the next full reload
+    }else if(event.event === 'seat_update' || event.event === 'seat_mute' || event.event === 'presence_update'){
+      // Previously only "left" was handled, so other clients never saw anyone sit down.
+      scheduleRoomRefresh(roomId);
     }
   });
 }
@@ -578,8 +652,8 @@ function seatHTML(p, idx){
     ? `<span class="seat-crown">👑</span>` : '';
   return `<div class="mic-seat ${p.muted?'muted':'speaking'} ${p.requesting?'requesting':''}" data-seat-idx="${idx}">
       ${crown}
-      <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${p.avatar}">${p.level?`<span class="seat-level">Lv ${p.level}</span>`:''}</div>
-      <span class="uname">${p.isMe? 'You' : p.name}</span>
+      <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${p.level?`<span class="seat-level">Lv ${escapeHTML(p.level)}</span>`:''}</div>
+      <span class="uname">${p.isMe? 'You' : escapeHTML(p.name)}</span>
       <span class="mic-status">${p.muted?'🔇':'🎙️'}</span>
       ${p.giftsReceived?`<span class="seat-gift-pill">🪙×${p.giftsReceived}</span>`:''}
     </div>`;
@@ -611,7 +685,7 @@ function openSeatProfile(idx){
   const seats = currentSeats();
   const seat = seats[idx];
   if(!seat || seat.empty) return;
-  document.getElementById('seat-profile-avatar').src = seat.avatar;
+  document.getElementById('seat-profile-avatar').src = safeImgUrl(seat.avatar);
   document.getElementById('seat-profile-name').textContent = seat.isMe ? (STATE.currentUser?STATE.currentUser.name:'You') : seat.name;
   document.getElementById('seat-profile-level').textContent = seat.level ? `Lv ${seat.level}` : 'Lv —';
   document.getElementById('seat-profile-sub').textContent = seat.muted ? '🔇 Muted on mic' : '🎙️ Speaking';
@@ -624,9 +698,9 @@ function openSeatProfile(idx){
     if(seat.srcUserId){
       actions.push(`<button class="btn btn-glass" data-seat-action="profile" data-seat-idx="${idx}">View Profile</button>`);
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
-    } else {
+    } else if(VIBRA_CONFIG.DEMO_DATA){
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
-    }
+    }  // real mode: no DM backend yet, so no dead "Message" button
     if(STATE.isHost){
       actions.push(`<button class="btn btn-danger full" data-seat-action="remove" data-seat-idx="${idx}">Remove from mic</button>`);
     }
@@ -762,8 +836,8 @@ function renderRequestsModal(){
   }
   list.innerHTML = STATE.handQueue.map((r,i)=>`
     <div class="request-row">
-      <img class="avatar" src="${r.avatar}">
-      <div class="meta">${r.name}<span>wants to join the mic</span></div>
+      <img class="avatar" src="${imgSrc(r.avatar)}">
+      <div class="meta">${escapeHTML(r.name)}<span>wants to join the mic</span></div>
       <div class="r-actions">
         <button class="r-approve" data-approve-req="${i}">✓</button>
         <button class="r-decline" data-decline-req="${i}">✕</button>
@@ -847,9 +921,9 @@ function chatMessageHTML(m){
   const giftClass = m.gift ? 'gift' : '';
   const replyBlock = m.replyTo ? `<div class="msg-reply-quote">↩ ${escapeHTML(m.replyTo.name)}: ${escapeHTML(m.replyTo.text.slice(0,60))}</div>` : '';
   return `<div class="msg ${giftClass}" data-msg-name="${escapeAttr(displayName.split(' ')[0])}" data-msg-text="${escapeAttr(m.text)}">
-    <img class="avatar" src="${avatar}">
+    <img class="avatar" src="${imgSrc(avatar)}">
     <div class="msg-body">
-      <div class="msg-head"><span class="uname">${displayName.split(' ')[0]}</span><span class="time">${time}</span></div>
+      <div class="msg-head"><span class="uname">${escapeHTML(displayName.split(' ')[0])}</span><span class="time">${time}</span></div>
       ${replyBlock}
       <div class="text">${escapeHTML(m.text)}</div>
     </div>
@@ -869,14 +943,20 @@ function appendChatMessage(m, isAmbient){
   }
 }
 
+const HTML_ESCAPES = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 function escapeHTML(str){
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
 }
-function escapeAttr(str){
-  return escapeHTML(str).replace(/"/g, '&quot;');
+function escapeAttr(str){ return escapeHTML(str); }
+// Image URLs come from the server (avatar_url is a user-controlled field), so only
+// http(s) is allowed and the value is attribute-escaped. Anything else renders blank.
+function safeImgUrl(u){
+  try{
+    const x = new URL(String(u == null ? '' : u), 'https://placeholder.invalid');
+    return (x.protocol === 'https:' || x.protocol === 'http:') ? String(u) : '';
+  }catch(e){ return ''; }
 }
+function imgSrc(u){ return escapeAttr(safeImgUrl(u)); }
 function nowTime(){
   const d = new Date();
   let h = d.getHours(); const m = d.getMinutes().toString().padStart(2,'0');
@@ -940,11 +1020,21 @@ function toggleSpeaker(){
   showToast(speakerOn ? 'Speaker on' : 'Speaker off', 'info');
 }
 function leaveRoom(){
+  const room = STATE.activeRoom;
+  if(!room) return;                       // already left (back button + Leave button, Esc, ...)
+  const isApiRoom = typeof room.id === 'number';
+  // Fire the server call first, synchronously, so it carries the current token
+  // even when leaveRoom() is invoked as part of logout.
+  const leaving = isApiRoom ? Api.leaveRoom(room.id).catch(e => console.error('leave failed', e)) : null;
+  clearTimeout(STATE.roomRefreshTimer);
   disconnectRoomSocket();
   disconnectVoice();
   stopRoomAmbience();
+  STATE.activeRoom = null;
+  STATE.mySeatIndex = -1;
   closeOverlay('screen-room');
   showToast('You left the room', 'info');
+  if(leaving) leaving.then(()=> STATE.currentUser && refreshApiRooms().then(renderHome));
 }
 
 /* ---- reply-to ---- */
@@ -991,7 +1081,7 @@ function updateMentionSuggestions(){
   const partial = val.slice(at+1).toLowerCase();
   const matches = mentionCandidates().filter(c=> c.name.toLowerCase().includes(partial));
   if(!matches.length){ box.classList.remove('show'); return; }
-  box.innerHTML = matches.slice(0,5).map(c=>`<div class="mention-row" data-mention="${escapeAttr(c.name)}"><img class="avatar" src="${c.avatar}">@${escapeHTML(c.name)}</div>`).join('');
+  box.innerHTML = matches.slice(0,5).map(c=>`<div class="mention-row" data-mention="${escapeAttr(c.name)}"><img class="avatar" src="${imgSrc(c.avatar)}">@${escapeHTML(c.name)}</div>`).join('');
   box.classList.add('show');
   positionMentionSuggestions();
 }
@@ -1091,6 +1181,13 @@ function updateGiftAffordability(){
   });
 }
 function sendGift(){
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    // The old flow only edited a localStorage balance (forgeable, never reached the
+    // recipient). Real gifting through the Django ledger is Phase 3.
+    closeModal('gift-modal');
+    showToast('Gifting goes live in the next update', 'info');
+    return;
+  }
   if(!STATE.selectedGift){ showToast('Choose a gift first', 'error'); return; }
   const gift = DATA.giftCatalog.find(g=>g.id===STATE.selectedGift);
   const balance = getWallet();
@@ -1160,6 +1257,10 @@ function updateWalletUI(){
   if(el) el.textContent = bal.toLocaleString();
 }
 function renderPackages(){
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    document.getElementById('package-grid').innerHTML = emptyStateHTML('🪙','Test coins only','Real-money purchases are not enabled in this build.');
+    return;
+  }
   document.getElementById('package-grid').innerHTML = DATA.packages.map(p=>`
     <div class="package-card glass ${p.best?'best':''}" data-package-id="${p.id}">
       <div class="coins">🪙 ${p.coins.toLocaleString()}</div>
@@ -1167,13 +1268,33 @@ function renderPackages(){
       <button class="btn btn-glass btn-sm btn-block" data-buy-package="${p.id}">Buy</button>
     </div>`).join('');
 }
-function renderTxHistory(){
+async function renderTxHistory(){
+  const listEl = document.getElementById('tx-list');
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    listEl.innerHTML = emptyStateHTML('⏳','Loading…','');
+    try{
+      const rows = await Api.listTransactions();
+      listEl.innerHTML = rows.map(t=>{
+        const icon = t.type==='gift_received'?'🎁':t.type==='purchase'?'💳':t.type==='gift_sent'?'📤':'🪙';
+        const when = new Date(t.created_at).toLocaleString([], {dateStyle:'medium', timeStyle:'short'});
+        return `<div class="tx-row">
+          <div class="tx-info"><span class="tx-icon glass">${icon}</span>
+            <div class="tx-meta"><div class="t">${escapeHTML(t.label)}</div><div class="d">${escapeHTML(when)}</div></div>
+          </div>
+          <div class="amt ${t.amount>=0?'pos':'neg'}">${t.amount>=0?'+':''}${Number(t.amount)}</div>
+        </div>`;
+      }).join('') || emptyStateHTML('🧾','No transactions yet','Your coin activity will show up here.');
+    }catch(e){
+      listEl.innerHTML = emptyStateHTML('⚠️','Could not load transactions', escapeHTML(e.message || ''));
+    }
+    return;
+  }
   const tx = Storage.get(Storage.KEYS.TX, []);
-  document.getElementById('tx-list').innerHTML = tx.map(t=>{
+  listEl.innerHTML = tx.map(t=>{
     const icon = t.type==='received'?'🎁':t.type==='purchase'?'💳':'📤';
     return `<div class="tx-row">
       <div class="tx-info"><span class="tx-icon glass">${icon}</span>
-        <div class="tx-meta"><div class="t">${t.label}</div><div class="d">${t.time}</div></div>
+        <div class="tx-meta"><div class="t">${escapeHTML(t.label)}</div><div class="d">${escapeHTML(t.time)}</div></div>
       </div>
       <div class="amt ${t.positive?'pos':'neg'}">${t.positive?'+':''}${t.amount}</div>
     </div>`;
@@ -1184,8 +1305,10 @@ function openWallet(){
   renderPackages();
   document.getElementById('tx-history-section').classList.add('hidden');
   openOverlay('screen-wallet');
+  refreshWallet().then(updateWalletUI);   // show the real ledger balance
 }
 function buyPackage(packageId){
+  if(!VIBRA_CONFIG.DEMO_DATA){ showToast('Purchases are not enabled yet', 'info'); return; }
   const pack = DATA.packages.find(p=>p.id===packageId);
   document.getElementById('payment-title').textContent = 'Confirm purchase';
   document.getElementById('payment-desc').textContent = `Buy ${pack.coins.toLocaleString()} Coins for ₹${pack.price}?`;
@@ -1193,6 +1316,8 @@ function buyPackage(packageId){
   openModal('payment-modal');
 }
 function confirmPurchase(){
+  // Demo-only: credits coins locally for free. Never reachable in real mode.
+  if(!VIBRA_CONFIG.DEMO_DATA){ closeModal('payment-modal'); return; }
   const packageId = document.getElementById('confirm-payment').dataset.packageId;
   const pack = DATA.packages.find(p=>p.id===packageId);
   if(!pack) return;
@@ -1226,11 +1351,11 @@ function profileHTML(user, isSelf){
   return `
     <div class="profile-cover" style="background:${DATA.gradients[user.level % DATA.gradients.length]};"></div>
     <div class="profile-main">
-      <img class="avatar" src="${user.avatar}">
-      <div class="profile-name-row"><h2>${user.name}</h2><span class="level-badge">Lvl ${user.level}</span></div>
-      <div class="profile-username">@${user.username}</div>
-      <div class="profile-bio">${user.bio}</div>
-      <div class="profile-country">📍 ${user.country}</div>
+      <img class="avatar" src="${imgSrc(user.avatar)}">
+      <div class="profile-name-row"><h2>${escapeHTML(user.name)}</h2><span class="level-badge">Lvl ${escapeHTML(user.level)}</span></div>
+      <div class="profile-username">@${escapeHTML(user.username)}</div>
+      <div class="profile-bio">${escapeHTML(user.bio)}</div>
+      <div class="profile-country">📍 ${escapeHTML(user.country)}</div>
       <div class="profile-stats">
         <div class="stat"><b>${user.followers.toLocaleString()}</b><span>Followers</span></div>
         <div class="stat"><b>${user.following.toLocaleString()}</b><span>Following</span></div>
@@ -1269,10 +1394,11 @@ function renderOwnProfile(){
   const selfAsProfileUser = {
     ...u,
     bio: u.bio || 'New to Vibra ✨ Say hi!',
-    country: u.country || 'India 🇮🇳',
-    followers: u.followers ?? 128,
-    following: u.following ?? 76,
-    level: u.level ?? 4,
+    country: u.country || (VIBRA_CONFIG.DEMO_DATA ? 'India 🇮🇳' : 'Somewhere on Earth 🌍'),
+    // Real mode shows the server's counts; the 128/76/Lv4 placeholders are demo-only.
+    followers: u.followers ?? (VIBRA_CONFIG.DEMO_DATA ? 128 : 0),
+    following: u.following ?? (VIBRA_CONFIG.DEMO_DATA ? 76 : 0),
+    level: u.level ?? (VIBRA_CONFIG.DEMO_DATA ? 4 : 1),
   };
   document.getElementById('profile-render-target').innerHTML = profileHTML(selfAsProfileUser, true);
   bindProfileTabs(document.getElementById('profile-render-target'));
@@ -1308,6 +1434,10 @@ function seedDMThread(userId){
 
 function renderMessagesList(){
   const list = document.getElementById('messages-list');
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    list.innerHTML = emptyStateHTML('💬','Direct messages are coming soon','For now, chat with everyone inside a room.');
+    return;
+  }
   list.innerHTML = DATA.dmSeed.map(d=>{
     const u = DATA.getUser(d.userId);
     return `<div class="msg-list-row ${d.unread?'unread':''}" data-open-dm="${d.userId}">
@@ -1368,6 +1498,10 @@ function notifIconMeta(type){
 }
 function renderNotifications(){
   const list = document.getElementById('notifications-list');
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    list.innerHTML = emptyStateHTML('🔔','No notifications yet','Follows, gifts and mentions will show up here.');
+    return;
+  }
   list.innerHTML = DATA.notifSeed.map(n=>{
     const meta = notifIconMeta(n.type);
     const u = n.userId ? DATA.getUser(n.userId) : null;
@@ -1386,6 +1520,7 @@ function renderCreateRoomCategories(){
   wrap.innerHTML = DATA.categories.filter(c=>c!=='All' && c!=='Trending').map((c,i)=>
     `<button type="button" class="chip ${i===0?'active':''}" data-cr-cat="${c}">${c}</button>`).join('');
 }
+// Returns true on success so the form is only cleared/closed when the room exists.
 async function createRoom(name, desc, category){
   try{
     const room = await Api.createRoom({ name, category: category.toLowerCase(), description: desc || 'A new Vibra room.' });
@@ -1393,21 +1528,39 @@ async function createRoom(name, desc, category){
     renderHome();
     showToast('Room created successfully', 'success');
     openRoom(room.id);
+    return true;
   }catch(e){
     showToast(e.message || 'Could not create room', 'error');
+    return false;
   }
 }
 
 /* ---------------------------- SETTINGS (settings.js) ------------------------ */
-function doLogout(){
+// Shared by an explicit logout and by an expired/revoked session.
+function resetToLoginScreen(message, type){
+  // Must run BEFORE tokens are cleared so the server-side leave is authenticated.
+  if(STATE.activeRoom) leaveRoom();
+  Api.logout();
   Storage.set(Storage.KEYS.USER, null);
   STATE.currentUser = null;
-  closeModal('logout-modal');
-  closeOverlay('screen-settings');
+  STATE.walletBalance = 0;
+  STATE.apiRooms = [];
+  Object.keys(ROOM_SEATS_CACHE).forEach(k => delete ROOM_SEATS_CACHE[k]);
+  document.querySelectorAll('.modal-backdrop.show').forEach(m => m.classList.remove('show'));
+  document.querySelectorAll('.overlay-screen.active').forEach(o => o.classList.remove('active'));
+  document.body.style.overflow = '';
   document.getElementById('app-shell').classList.remove('active');
   document.getElementById('screen-login').classList.remove('hidden');
   document.getElementById('login-form').reset();
-  showToast('You have been logged out', 'info');
+  showToast(message, type || 'info');
+}
+function doLogout(){
+  closeModal('logout-modal');
+  resetToLoginScreen('You have been logged out', 'info');
+}
+function handleSessionExpired(){
+  if(!STATE.currentUser) return; // already logged out (e.g. a failed login attempt)
+  resetToLoginScreen('Your session expired. Please log in again.', 'error');
 }
 
 /* ============================================================================
@@ -1420,6 +1573,62 @@ function bindPasswordToggles(){
       input.type = input.type === 'password' ? 'text' : 'password';
       btn.textContent = input.type === 'password' ? '👁️' : '🙈';
     });
+  });
+}
+
+/* ---- password reset: request link (forgot-modal) + set new password (reset-modal) ---- */
+let RESET_TOKEN = null;
+function maybeOpenResetFromUrl(){
+  // The emailed link is  <FRONTEND_URL>/?reset_token=<token>
+  const token = new URLSearchParams(window.location.search).get('reset_token');
+  if(!token) return;
+  RESET_TOKEN = token;
+  openModal('reset-modal');
+}
+function clearResetTokenFromUrl(){
+  RESET_TOKEN = null;
+  try{ window.history.replaceState({}, '', window.location.pathname); }catch(e){ /* non-fatal */ }
+}
+function bindPasswordReset(){
+  document.getElementById('forgot-btn').addEventListener('click', ()=>{
+    document.getElementById('forgot-success-msg').style.display = 'none';
+    setFieldError('forgot-email-field', false);
+    openModal('forgot-modal');
+  });
+  document.getElementById('forgot-cancel-btn').addEventListener('click', ()=> closeModal('forgot-modal'));
+  document.getElementById('forgot-submit-btn').addEventListener('click', async ()=>{
+    const email = document.getElementById('forgot-email').value.trim();
+    const ok = /^\S+@\S+\.\S+$/.test(email);
+    setFieldError('forgot-email-field', !ok);
+    if(!ok) return;
+    const btn = document.getElementById('forgot-submit-btn');
+    btn.disabled = true;
+    try{
+      await Api.requestPasswordReset(email);
+      // The server answers identically whether or not the email exists.
+      document.getElementById('forgot-success-msg').style.display = 'block';
+    }catch(e){
+      showToast(e.message || 'Could not send reset link', 'error');
+    }finally{ btn.disabled = false; }
+  });
+
+  document.getElementById('reset-cancel-btn').addEventListener('click', ()=>{ closeModal('reset-modal'); clearResetTokenFromUrl(); });
+  document.getElementById('reset-submit-btn').addEventListener('click', async ()=>{
+    const pw = document.getElementById('reset-pw').value;
+    const pw2 = document.getElementById('reset-pw2').value;
+    setFieldError('reset-pw-field', pw.length < 8);
+    setFieldError('reset-pw2-field', pw !== pw2 || !pw2);
+    if(pw.length < 8 || pw !== pw2 || !RESET_TOKEN) return;
+    const btn = document.getElementById('reset-submit-btn');
+    btn.disabled = true;
+    try{
+      await Api.resetPassword(RESET_TOKEN, pw);
+      document.getElementById('reset-success-msg').style.display = 'block';
+      clearResetTokenFromUrl();
+      setTimeout(()=> closeModal('reset-modal'), 1600);
+    }catch(e){
+      showToast(e.message || 'Could not reset password', 'error');
+    }finally{ btn.disabled = false; }
   });
 }
 
@@ -1438,18 +1647,16 @@ function bindAuth(){
   document.getElementById('guest-btn').addEventListener('click', async ()=>{
     try{
       const profile = await Api.guestLogin();
-      loginAs({
-        name: profile.username, username: profile.username,
-        avatar: profile.avatar_url || DATA.avatarFor(profile.username),
-        level: profile.level,
-      });
+      loginAs(profileToAccount(profile));
     }catch(e){
       showToast(e.message || 'Guest login failed', 'error');
     }
   });
-  document.getElementById('forgot-btn').addEventListener('click', ()=> showToast('Password reset link sent (demo)', 'info'));
-  document.getElementById('google-btn').addEventListener('click', ()=> loginAs({ name:'Sahil Menon', username:'sahilm', avatar: DATA.avatarFor('sahilm-google') }));
-  document.getElementById('apple-btn').addEventListener('click', ()=> loginAs({ name:'Sahil Menon', username:'sahilm', avatar: DATA.avatarFor('sahilm-apple') }));
+  bindPasswordReset();
+  // These buttons used to "log in" as a hard-coded user with no server session
+  // (every API call then failed with 401). Real OAuth is not part of the MVP.
+  document.getElementById('google-btn').addEventListener('click', ()=> showToast('Google sign-in is not available yet', 'info'));
+  document.getElementById('apple-btn').addEventListener('click', ()=> showToast('Apple sign-in is not available yet', 'info'));
 
   document.getElementById('signup-form').addEventListener('submit', e=>{
     e.preventDefault();
@@ -1462,7 +1669,8 @@ function bindAuth(){
 
     let ok = true;
     setFieldError('su-name-field', !name); if(!name) ok=false;
-    setFieldError('su-username-field', username.length<3); if(username.length<3) ok=false;
+    const usernameOk = /^[A-Za-z0-9_]{3,30}$/.test(username);
+    setFieldError('su-username-field', !usernameOk); if(!usernameOk) ok=false;
     const emailOk = /^\S+@\S+\.\S+$/.test(email);
     setFieldError('su-email-field', !emailOk); if(!emailOk) ok=false;
     setFieldError('su-dob-field', !dob); if(!dob) ok=false;
@@ -1624,8 +1832,8 @@ function bindRoomScreen(){
     document.getElementById('participants-list').innerHTML = seats.length ? seats.map((p,realIdx)=>{
       const idx = currentSeats().indexOf(p);
       return `<div class="discover-row">
-        <img class="thumb avatar" style="border-radius:50%;" src="${p.avatar}">
-        <div class="meta"><div class="name">${p.isMe?'You':p.name}</div><div class="sub">${p.muted?'Muted':'Speaking'}${p.giftsReceived?` · 🪙${p.giftsReceived} received`:''}</div></div>
+        <img class="thumb avatar" style="border-radius:50%;" src="${imgSrc(p.avatar)}">
+        <div class="meta"><div class="name">${p.isMe?'You':escapeHTML(p.name)}</div><div class="sub">${p.muted?'Muted':'Speaking'}${p.giftsReceived?` · 🪙${p.giftsReceived} received`:''}</div></div>
         ${!p.isMe?`<button class="join-mini btn-glass" data-participant-gift="${idx}">🎁</button>`:''}
       </div>`;
     }).join('') : emptyStateHTML('👥','Nobody on mic yet','Tap an empty seat to hop on!');
@@ -1745,16 +1953,27 @@ function bindCreateRoom(){
     });
   });
   document.getElementById('cr-image-picker').addEventListener('click', ()=> showToast('Image upload (demo)', 'info'));
-  document.getElementById('create-room-form').addEventListener('submit', e=>{
+  document.getElementById('create-room-form').addEventListener('submit', async e=>{
     e.preventDefault();
+    const form = e.target;
     const name = document.getElementById('cr-name').value.trim();
     if(!name){ showToast('Room name is required', 'error'); return; }
+    if(selectedPrivacy === 'private'){
+      // The backend has no private-room support yet; silently creating a PUBLIC room
+      // for someone who asked for private would be a privacy surprise.
+      showToast('Private rooms are not available yet — choose Public to continue', 'info');
+      return;
+    }
     const desc = document.getElementById('cr-desc').value.trim();
     const activeCatChip = document.querySelector('#cr-category .chip.active');
     const category = activeCatChip ? activeCatChip.dataset.crCat : 'Talk';
-    createRoom(name, desc, category);
+    const submit = form.querySelector('button[type="submit"]');
+    if(submit) submit.disabled = true;           // no double-create on a slow network
+    const ok = await createRoom(name, desc, category);
+    if(submit) submit.disabled = false;
+    if(!ok) return;                              // keep what the user typed
     closeOverlay('screen-create-room');
-    e.target.reset();
+    form.reset();
     document.querySelectorAll('#cr-category .chip').forEach((c,i)=>c.classList.toggle('active', i===0));
   });
 }
@@ -1784,13 +2003,21 @@ function initSplash(){
     document.getElementById('screen-splash').style.opacity = '0';
     setTimeout(()=>{
       document.getElementById('screen-splash').classList.add('hidden');
-      const existing = Storage.get(Storage.KEYS.USER);
-      if(existing){
-        STATE.currentUser = existing;
-        enterApp();
+      const showLogin = ()=> document.getElementById('screen-login').classList.remove('hidden');
+      if(Api.hasSession()){
+        // Validate the stored tokens with the server instead of trusting a cached user object.
+        Api.me().then(profile=>{
+          STATE.currentUser = profileToAccount(profile);
+          enterApp();
+        }).catch(e=>{
+          if(e.status === 0){ showToast(e.message, 'error'); }   // offline: keep tokens, retry on next load
+          else { Api.logout(); }
+          showLogin();
+        });
       } else {
-        document.getElementById('screen-login').classList.remove('hidden');
+        showLogin();
       }
+      maybeOpenResetFromUrl();
     }, 400);
   }, 2200);
 }
@@ -1810,6 +2037,11 @@ function bindGlobalKeyboard(){
 
 
 function init(){
+  Api.onAuthLost = handleSessionExpired;
+  // Free the seat if the tab is closed/navigated away while inside a room.
+  window.addEventListener('pagehide', ()=>{
+    if(STATE.activeRoom && typeof STATE.activeRoom.id === 'number') Api.leaveRoomOnExit(STATE.activeRoom.id);
+  });
   initStorageDefaults();
   bindPasswordToggles();
   bindAuth();

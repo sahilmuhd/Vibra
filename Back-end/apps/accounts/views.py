@@ -2,16 +2,21 @@ import secrets
 import uuid
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.cache import cache
+from django.db import transaction
 from django.core.mail import send_mail
 from django.conf import settings
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Profile
-from .serializers import ProfileSerializer, SignupSerializer
+from .profiles import ensure_profile
+from .serializers import ProfileSerializer, SignupSerializer, VibraTokenObtainPairSerializer
 
 User = get_user_model()
 
@@ -19,6 +24,10 @@ User = get_user_model()
 def tokens_for(user):
     refresh = RefreshToken.for_user(user)
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+class LoginView(TokenObtainPairView):
+    serializer_class = VibraTokenObtainPairSerializer
 
 
 class SignupView(APIView):
@@ -42,13 +51,14 @@ class GuestLoginView(APIView):
     def post(self, request):
         suffix = uuid.uuid4().hex[:8]
         username = f"guest{suffix}"
-        user = User.objects.create_user(username=username, password=uuid.uuid4().hex)
-        Profile.objects.create(
-            user=user,
-            username=username,
-            avatar_url=f"https://api.dicebear.com/7.x/notionists/svg?seed={username}",
-            is_guest=True,
-        )
+        with transaction.atomic():
+            user = User.objects.create_user(username=username, password=uuid.uuid4().hex)
+            Profile.objects.create(
+                user=user,
+                username=username,
+                avatar_url=f"https://api.dicebear.com/7.x/notionists/svg?seed={username}",
+                is_guest=True,
+            )
         return Response(
             {"user": ProfileSerializer(user.profile).data, **tokens_for(user)},
             status=status.HTTP_201_CREATED,
@@ -60,7 +70,7 @@ class MeView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        return self.request.user.profile
+        return ensure_profile(self.request.user)
 
 
 class PublicProfileView(generics.RetrieveAPIView):
@@ -141,6 +151,11 @@ class PasswordResetConfirmView(APIView):
             user = User.objects.get(pk=user_pk)
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            validate_password(new_password, user)
+        except DjangoValidationError as exc:
+            return Response({"detail": " ".join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
         user.set_password(new_password)
         user.save()

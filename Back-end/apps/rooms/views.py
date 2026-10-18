@@ -1,11 +1,17 @@
 import uuid
 
+from django.db import transaction
+from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import HandRaise, Message, Room, Seat
+from apps.accounts.profiles import ensure_profile
+from apps.accounts.serializers import PublicUserSerializer
+
+from .models import HandRaise, Message, Room, RoomParticipant, Seat
 from .realtime import broadcast_to_room
 from .serializers import (
     HandRaiseSerializer,
@@ -15,14 +21,31 @@ from .serializers import (
 )
 
 
+def room_queryset():
+    """Rooms with host/profile/seat users preloaded and the live participant
+    count annotated, so list + detail don't run N+1 queries."""
+    return (
+        Room.objects.select_related("host__profile")
+        .prefetch_related("seats__user__profile")
+        .annotate(online_total=Count("participants", distinct=True))
+    )
+
+
 class RoomListCreateView(generics.ListCreateAPIView):
-    queryset = Room.objects.filter(is_live=True).order_by("-created_at")
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = RoomListSerializer
 
-    def get_serializer_class(self):
-        return RoomListSerializer if self.request.method == "GET" else RoomListSerializer
+    def get_queryset(self):
+        qs = room_queryset().filter(is_live=True).order_by("-created_at")
+        category = (self.request.query_params.get("category") or "").strip().lower()
+        if category:
+            qs = qs.filter(category=category)
+        return qs
 
+    @transaction.atomic
     def perform_create(self, serializer):
+        # Atomic: previously a failure mid-way left a room with no/partial seats.
+        ensure_profile(self.request.user)
         room = serializer.save(
             host=self.request.user,
             voice_room_name=f"vibra-{uuid.uuid4().hex[:12]}",
@@ -30,17 +53,65 @@ class RoomListCreateView(generics.ListCreateAPIView):
         Seat.objects.bulk_create(
             [Seat(room=room, position=i) for i in range(room.seat_count)]
         )
-        # Host auto-takes seat 0
-        seat0 = room.seats.get(position=0)
-        seat0.user = self.request.user
-        seat0.is_muted = False
-        seat0.save(update_fields=["user", "is_muted"])
+        # Host auto-takes seat 0 (unmuted) and is the first participant.
+        Seat.objects.filter(room=room, position=0).update(user=self.request.user, is_muted=False)
+        RoomParticipant.objects.create(room=room, user=self.request.user)
 
 
 class RoomDetailView(generics.RetrieveAPIView):
-    queryset = Room.objects.all()
+    queryset = room_queryset()
     serializer_class = RoomDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+class JoinRoomView(APIView):
+    """Registers the caller as being in the room and returns the full room
+    snapshot (seats included). Idempotent."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, room_id):
+        room = get_object_or_404(Room, id=room_id)
+        if not room.is_live:
+            return Response({"detail": "This room has ended."}, status=status.HTTP_410_GONE)
+        ensure_profile(request.user)
+        _, created = RoomParticipant.objects.get_or_create(room=room, user=request.user)
+        snapshot = room_queryset().get(id=room.id)
+        if created:
+            broadcast_to_room(room.id, "presence.update", {
+                "user": PublicUserSerializer(request.user).data,
+                "action": "joined",
+                "online_count": snapshot.online_total,
+            })
+        return Response(RoomDetailSerializer(snapshot).data)
+
+
+class LeaveRoomView(APIView):
+    """Leaves the room: frees any seat the caller holds, withdraws a pending
+    hand-raise and removes them from the participant list. Idempotent, and
+    allowed even if the room has already ended."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, room_id):
+        room = get_object_or_404(Room, id=room_id)
+        freed = []
+        with transaction.atomic():
+            for seat in Seat.objects.select_for_update().filter(room=room, user=request.user):
+                seat.user = None
+                seat.is_muted = True
+                seat.save(update_fields=["user", "is_muted"])
+                freed.append(seat.position)
+            HandRaise.objects.filter(room=room, user=request.user).delete()
+            removed, _ = RoomParticipant.objects.filter(room=room, user=request.user).delete()
+        # Broadcast only after the transaction has committed.
+        for position in freed:
+            broadcast_to_room(room.id, "seat.update", {"position": position, "action": "left"})
+        if removed:
+            broadcast_to_room(room.id, "presence.update", {
+                "user_id": request.user.id,
+                "action": "left",
+                "online_count": RoomParticipant.objects.filter(room=room).count(),
+            })
+        return Response({"left": True, "released_seats": freed})
 
 
 class TakeSeatView(APIView):
@@ -109,11 +180,32 @@ class MessageListCreateView(generics.ListCreateAPIView):
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_room(self):
+        # 404 (not a 500 IntegrityError) for a room that does not exist.
+        if not hasattr(self, "_room"):
+            self._room = get_object_or_404(Room, id=self.kwargs["room_id"])
+        return self._room
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["room"] = self.get_room()
+        return context
+
     def get_queryset(self):
-        return Message.objects.filter(room_id=self.kwargs["room_id"]).order_by("-created_at")[:50]
+        # Newest first (the frontend reverses it). Contract unchanged.
+        return (
+            Message.objects.filter(room=self.get_room())
+            .select_related("user__profile")
+            .order_by("-created_at", "-id")[:50]
+        )
 
     def perform_create(self, serializer):
-        message = serializer.save(room_id=self.kwargs["room_id"], user=self.request.user)
+        room = self.get_room()
+        if not room.is_live:
+            raise PermissionDenied("This room has ended.")
+        if not RoomParticipant.objects.filter(room=room, user=self.request.user).exists():
+            raise PermissionDenied("Join the room before sending messages.")
+        message = serializer.save(room=room, user=self.request.user)
         broadcast_to_room(
             message.room_id, "message.new", MessageSerializer(message).data
         )

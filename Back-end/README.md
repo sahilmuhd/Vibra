@@ -62,3 +62,21 @@ Connect a WebSocket client to `ws://localhost:8000/ws/rooms/<id>/?token=<jwt acc
   available (1.2.0 at time of writing) was used to verify the token code —
   double check `AccessToken`/`VideoGrants` method signatures against
   whichever version you actually install.
+
+## Testing
+
+```bash
+# Fast suite, no Postgres/Redis needed (SQLite + in-memory channel layer):
+python manage.py test --settings=config.settings_test
+
+# Frontend logic tests (Node 18+, zero dependencies):
+node --test Front-end/tests/api.test.js Front-end/tests/app.test.js
+```
+
+`settings_test` cannot prove row-locking behaviour (SQLite ignores
+`SELECT ... FOR UPDATE`). Seat-claiming and wallet concurrency tests (Phase 2/4)
+must run against PostgreSQL with the normal settings.
+
+After pulling Phase 1, run `python manage.py migrate` (adds `rooms.RoomParticipant`)
+and `python manage.py makemigrations --check --dry-run` (migration 0002 was
+hand-written).

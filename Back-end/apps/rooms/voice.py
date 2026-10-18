@@ -5,6 +5,8 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.profiles import ensure_profile
+
 from .models import Room
 
 
@@ -22,7 +24,7 @@ class VoiceTokenView(APIView):
 
         token = api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
         token = token.with_identity(str(request.user.id)).with_name(
-            request.user.profile.username
+            ensure_profile(request.user).username
         )
         # Listeners (no seat) can subscribe but not publish audio; seated
         # users can publish. Mute state is still enforced client-side by

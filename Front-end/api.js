@@ -11,13 +11,21 @@
    functions to change.
    ========================================================================== */
 
-// Auto-detect API base: use relative URL on production, localhost in dev.
-// This way the same code works both locally and on vibra.sahilmuhd.com.
-const API_BASE = (
-  window.location.hostname === 'localhost' ||
-  window.location.hostname === '127.0.0.1' ||
-  window.location.protocol === 'file:'
-) ? 'http://localhost:8000/api' : '/api';
+// ---- configuration -------------------------------------------------------
+// Defaults keep the previous behaviour (localhost in dev, the Render API in
+// production). To override WITHOUT editing this file, define
+//   <script>window.__VIBRA_CONFIG__ = { API_BASE: 'https://api.example.com/api' }</script>
+// before api.js. DEMO_DATA=true re-enables the old mock rooms/users/wallet so
+// the UI can still be demoed offline; it must stay false for real use.
+const VIBRA_CONFIG = Object.assign({
+  API_BASE: (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.protocol === 'file:'
+  ) ? 'http://localhost:8000/api' : 'https://vibra-backend-vac1.onrender.com/api',
+  DEMO_DATA: false,
+}, window.__VIBRA_CONFIG__ || {});
+const API_BASE = VIBRA_CONFIG.API_BASE;
 
 
 const Api = {
@@ -34,66 +42,95 @@ const Api = {
     localStorage.removeItem("vibra_refresh");
   },
 
+  // Set by app.js: called once when the session can no longer be refreshed.
+  onAuthLost: null,
+  _refreshing: null,
+
   // ---- low-level request helper: adds the auth header, retries once
   // after a token refresh if the access token expired (401) ----
-  async request(path, { method = "GET", body, auth = true, retry = true } = {}) {
+  async request(path, { method = "GET", body, auth = true, retry = true, keepalive = false } = {}) {
     const headers = { "Content-Type": "application/json" };
     if (auth) {
       const token = this.getAccessToken();
       if (token) headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let res;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers,
+        keepalive,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      const err = new Error("Can't reach the Vibra server. Check your connection.");
+      err.status = 0;
+      throw err;
+    }
 
     if (res.status === 401 && auth && retry) {
       const refreshed = await this.refreshAccessToken();
-      if (refreshed) return this.request(path, { method, body, auth, retry: false });
+      if (refreshed) return this.request(path, { method, body, auth, retry: false, keepalive });
+      // Refresh token missing/expired/revoked: the session is over.
+      const hadSession = !!this.getAccessToken();
+      this.clearTokens();
+      if (hadSession && typeof this.onAuthLost === "function") this.onAuthLost();
     }
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const message = data.detail || Object.values(data)[0] || "Request failed";
-      throw new Error(Array.isArray(message) ? message[0] : message);
+      const first = data && typeof data === "object" ? Object.values(data)[0] : null;
+      const message = (data && data.detail) || first || "Request failed";
+      const err = new Error(Array.isArray(message) ? String(message[0]) : String(message));
+      err.status = res.status;
+      err.data = data;
+      throw err;
     }
     return data;
   },
 
-  async refreshAccessToken() {
-    const refresh = this.getRefreshToken();
-    if (!refresh) return false;
-    try {
-      const res = await fetch(`${API_BASE}/auth/login/refresh/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      this.setTokens(data.access, null);
-      return true;
-    } catch {
-      return false;
-    }
+  // Single-flight: several requests failing with 401 at once share ONE refresh
+  // call instead of racing each other.
+  refreshAccessToken() {
+    if (this._refreshing) return this._refreshing;
+    this._refreshing = (async () => {
+      const refresh = this.getRefreshToken();
+      if (!refresh) return false;
+      try {
+        const res = await fetch(`${API_BASE}/auth/login/refresh/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        this.setTokens(data.access, data.refresh || null);
+        return true;
+      } catch {
+        return false;
+      }
+    })().finally(() => { this._refreshing = null; });
+    return this._refreshing;
   },
+
+  hasSession() { return !!(this.getAccessToken() || this.getRefreshToken()); },
 
   // ---- auth ----
   async signup({ name, username, email, password, dob }) {
+    // The UI sends new users to the login screen after signup, so tokens are
+    // deliberately NOT stored here: otherwise a reload would silently log the
+    // user in even though they never saw a logged-in state.
     const data = await this.request("/auth/signup/", {
       method: "POST",
       auth: false,
       body: { name, username, email, password, dob },
     });
-    this.setTokens(data.access, data.refresh);
     return data.user;
   },
 
   async login({ username, password }) {
-    // Uses SimpleJWT's default TokenObtainPairView, which expects the
-    // USERNAME_FIELD (username) + password.
+    // `username` may be a username or an email address (case-insensitive).
     const data = await this.request("/auth/login/", {
       method: "POST",
       auth: false,
@@ -118,8 +155,9 @@ const Api = {
   },
 
   // ---- rooms ----
-  async listRooms() {
-    return this.request("/rooms/");
+  async listRooms(category) {
+    const q = category && category !== "All" ? `?category=${encodeURIComponent(category.toLowerCase())}` : "";
+    return this.request(`/rooms/${q}`);
   },
 
   async createRoom({ name, category, description }) {
@@ -131,6 +169,24 @@ const Api = {
 
   async getRoom(roomId) {
     return this.request(`/rooms/${roomId}/`);
+  },
+
+  // Registers the caller as "in the room" and returns the full room snapshot.
+  async joinRoom(roomId) {
+    return this.request(`/rooms/${roomId}/join/`, { method: "POST" });
+  },
+
+  // Frees the caller's seat/hand-raise and removes them from the room.
+  async leaveRoom(roomId) {
+    return this.request(`/rooms/${roomId}/leave/`, { method: "POST" });
+  },
+
+  // Best-effort leave for page unload (keepalive lets it outlive the page).
+  // No refresh/retry: if the token is stale the server-side cleanup in Phase 2
+  // (disconnect handling) is the safety net.
+  leaveRoomOnExit(roomId) {
+    try { return this.request(`/rooms/${roomId}/leave/`, { method: "POST", retry: false, keepalive: true }).catch(() => {}); }
+    catch { return Promise.resolve(); }
   },
 
   async takeSeat(roomId, position) {
@@ -174,6 +230,10 @@ const Api = {
     return this.request("/wallet/balance/");
   },
 
+  async listTransactions() {
+    return this.request("/wallet/transactions/");
+  },
+
   async listGifts() {
     return this.request("/wallet/gifts/");
   },
@@ -186,93 +246,38 @@ const Api = {
   },
 
   // ---- real-time (WebSocket) ----
-  // Call this after taking a seat / entering a room. Returns the raw
-  // WebSocket so app.js can attach its own onmessage handler.
-  connectRoomSocket(roomId, onEvent) {
-    const token = this.getAccessToken();
-    const wsBase = API_BASE.replace(/^http/, "ws").replace("/api", "");
-    const socket = new WebSocket(`${wsBase}/ws/rooms/${roomId}/?token=${token}`);
+  // Call this after joining a room. Returns the raw WebSocket so app.js can
+  // attach its own handlers. The JWT travels in the query string because
+  // browsers cannot set headers on a WebSocket handshake.
+  wsUrl(roomId) {
+    const token = this.getAccessToken() || "";
+    const wsBase = API_BASE.replace(/^http/, "ws").replace(/\/api\/?$/, "");
+    return `${wsBase}/ws/rooms/${roomId}/?token=${encodeURIComponent(token)}`;
+  },
+  connectRoomSocket(roomId, onEvent, { onClose, onOpen } = {}) {
+    const socket = new WebSocket(this.wsUrl(roomId));
     socket.onmessage = (msg) => {
       try { onEvent(JSON.parse(msg.data)); } catch (e) { console.error("bad ws message", e); }
     };
+    if (onOpen) socket.onopen = onOpen;
+    if (onClose) socket.onclose = onClose;
     return socket;
   },
 
   // ---- Password reset ----
   async requestPasswordReset(email) {
-    return this._req("/auth/password-reset/", "POST", { email }, false);
+    return this.request("/auth/password-reset/", { method: "POST", auth: false, body: { email } });
   },
   async resetPassword(token, newPassword) {
-    return this._req("/auth/password-reset/confirm/", "POST", { token, new_password: newPassword }, false);
+    return this.request("/auth/password-reset/confirm/", {
+      method: "POST", auth: false, body: { token, new_password: newPassword },
+    });
   },
 };
 
-
 /* ==========================================================================
-   INTEGRATION NOTES — what to change in app.js
-
-   1. doLogin(identifier) — replace the localStorage lookup with:
-        async function doLogin(identifier, password) {
-          try {
-            const user = await Api.login({ username: identifier, password });
-            loginAs(user); // keep your existing loginAs() for UI state
-          } catch (e) { showToast(e.message, 'error'); }
-        }
-      Note: your current login screen only collects one field ("identifier")
-      used as either email or username with no real password check — you'll
-      need to make sure the password field's value is actually passed in.
-
-   2. doSignup(data) — replace the localStorage push with:
-        async function doSignup(data) {
-          try {
-            const user = await Api.signup({
-              name: data.name, username: data.username,
-              email: data.email, password: data.password, dob: data.dob,
-            });
-            switchAuthScreen('screen-login', 'screen-signup');
-            // ... rest of your existing success UI
-          } catch (e) { showToast(e.message, 'error'); }
-        }
-
-   3. Room list (wherever DATA.rooms / STATE.rooms is read for rendering) —
-      replace the static array with:
-        const rooms = await Api.listRooms();
-      and adapt roomCardHTML() field names (Api returns online_count,
-      thumbnail_seed — match or rename to what your template expects).
-
-   4. createRoom(name, desc, category) — replace the local array push with:
-        async function createRoom(name, desc, category) {
-          const room = await Api.createRoom({ name, category, description: desc });
-          closeOverlay('screen-create-room');
-          openRoom(room.id); // fetch full detail + seats via Api.getRoom()
-        }
-
-   5. Taking a seat (wherever the UI currently just mutates STATE.activeRoom
-      seats locally) — call Api.takeSeat(roomId, position) instead, then
-      re-render from the WebSocket broadcast rather than local mutation.
-
-   6. Chat send — replace the local message push with Api.sendMessage(),
-      and render incoming messages from the WebSocket's `message_new` event
-      instead of from a local array, so multiple users actually see each
-      other's messages.
-
-   7. On entering a room, call:
-        const socket = Api.connectRoomSocket(room.id, (event) => {
-          switch (event.event) {
-            case 'seat_update': // re-render that seat
-              break;
-            case 'message_new': // append to chat
-              break;
-            case 'gift_sent': // play gift animation
-              break;
-            case 'presence_update': // update online count
-              break;
-          }
-        });
-      Close it (socket.close()) when leaving the room.
-
-   Do this incrementally — wire auth first, confirm signup/login work end
-   to end in the browser, THEN move to rooms, THEN messages/seats/gifts.
-   Trying to swap everything at once makes it much harder to tell which
-   change broke something.
+   Notes
+   - Backend contract: see Back-end/README.md. Errors surface as Error objects
+     with `.status` (0 = network failure) and `.data` (the parsed JSON body).
+   - Tests: `node --test Front-end/tests/` (no dependencies).
    ========================================================================== */

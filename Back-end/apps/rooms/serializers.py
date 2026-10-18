@@ -14,9 +14,15 @@ class RoomListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Room
         fields = ["id", "name", "category", "description", "host", "is_live", "online_count", "thumbnail_seed"]
+        # Clients must not decide liveness or the thumbnail seed.
+        read_only_fields = ["id", "is_live", "thumbnail_seed"]
+        extra_kwargs = {"name": {"min_length": 2}}
 
     def get_online_count(self, obj):
-        return obj.seats.exclude(user=None).count()
+        """Everyone currently in the room (listeners + speakers). Uses the
+        queryset annotation when the view provides it to avoid N+1 queries."""
+        annotated = getattr(obj, "online_total", None)
+        return annotated if annotated is not None else obj.participants.count()
 
 
 class SeatSerializer(serializers.ModelSerializer):
@@ -40,7 +46,16 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ["id", "room", "user", "text", "reply_to", "is_system", "created_at"]
-        read_only_fields = ["user", "is_system", "created_at"]
+        # `room` was previously writable and *required* in the body, so the
+        # frontend's {text, reply_to} payload was rejected with a 400. The room
+        # always comes from the URL.
+        read_only_fields = ["id", "room", "user", "is_system", "created_at"]
+
+    def validate_reply_to(self, value):
+        room = self.context.get("room")
+        if value is not None and room is not None and value.room_id != room.id:
+            raise serializers.ValidationError("Cannot reply to a message from another room.")
+        return value
 
     def validate_text(self, value):
         value = value.strip()
