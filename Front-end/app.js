@@ -696,9 +696,9 @@ function disconnectRoomSocket(){
 
 /* ---- real voice (LiveKit) — API rooms only ----
    Everyone who opens the room connects as a listener right away (can_publish
-   is decided server-side by voice.js based on whether they hold a seat).
-   Taking a seat later just flips setMicrophoneEnabled(true) on the same
-   connection — no need to reconnect. */
+   is decided server-side by voice.py based on whether they hold a seat).
+   A listener token cannot publish, so taking a seat reconnects with a fresh
+   token (see the takeSeat handler) before the mic is switched on. */
 async function connectVoice(roomId){
   if(typeof LivekitClient === 'undefined'){
     console.error('LiveKit SDK not loaded — check the <script> tag in index.html');
@@ -730,7 +730,8 @@ async function connectVoice(roomId){
     // If we're already seated when this connects (e.g. host reopening their
     // own room), publish the mic immediately.
     if(STATE.mySeatIndex > -1 && micOn){
-      await room.localParticipant.setMicrophoneEnabled(true);
+      try{ await room.localParticipant.setMicrophoneEnabled(true); }
+      catch(e){ showToast('Mic permission was blocked — check your browser settings', 'error'); }
     }
   }catch(e){
     console.error('Voice connection failed', e);
@@ -837,9 +838,14 @@ function requestSeat(idx){
       micOn = true; updateVoiceControlUI();
       renderMicGrid();
       showToast("You're live! Say hi 👋", 'success');
-      if(STATE.liveKitRoom){
-        try{ await STATE.liveKitRoom.localParticipant.setMicrophoneEnabled(true); }
-        catch(e){ showToast('Mic permission was blocked — check your browser settings', 'error'); }
+      // The token issued when we joined as a listener cannot publish audio
+      // (the backend only grants can_publish to seated users), so reconnect to
+      // get a publish-capable token. connectVoice() turns the mic on because
+      // mySeatIndex/micOn are already set above.
+      const roomIdAtSeat = STATE.activeRoom.id;
+      disconnectVoice();
+      if(STATE.activeRoom && STATE.activeRoom.id === roomIdAtSeat){
+        await connectVoice(roomIdAtSeat);
       }
     }).catch(e=>{
       seat.requesting = false;
