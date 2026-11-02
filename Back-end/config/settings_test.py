@@ -19,7 +19,18 @@ os.environ.setdefault("DEBUG", "False")
 
 from .settings import *  # noqa: E402,F401,F403
 
-DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+if os.environ.get("TEST_DB") == "postgres":
+    # CI: real PostgreSQL so SELECT ... FOR UPDATE behaviour is actually exercised.
+    DATABASES = {"default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME", "vibra"),
+        "USER": os.environ.get("DB_USER", "postgres"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", "postgres"),
+        "HOST": os.environ.get("DB_HOST", "localhost"),
+        "PORT": os.environ.get("DB_PORT", "5432"),
+    }}
+else:
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]  # speed only
@@ -28,3 +39,9 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 LIVEKIT_API_KEY = "test-key"
 LIVEKIT_API_SECRET = "test-secret-test-secret-test-secret-1234"
 LIVEKIT_URL = "wss://livekit.invalid"
+SECURE_SSL_REDIRECT = False
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    "DEFAULT_THROTTLE_RATES": {"anon": "100000/minute", "user": "100000/minute", "auth": "100000/minute"},
+}
+LOGGING_CONFIG = None  # keep test output quiet

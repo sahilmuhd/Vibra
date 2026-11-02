@@ -1,8 +1,9 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
 from rest_framework.exceptions import ValidationError
 
-from .models import Transaction
+from .models import PaymentOrder, Transaction
 
 
 def get_balance(user) -> int:
@@ -12,22 +13,27 @@ def get_balance(user) -> int:
 @transaction.atomic
 def send_gift(*, sender, recipient, gift, room, combo=1):
     """Atomically debit sender, credit recipient, and record the GiftEvent.
-    Runs inside one DB transaction + row lock so two simultaneous gift sends
-    from the same low-balance user can't both succeed (a real race in the
-    prototype's version, which just checked a cached number)."""
+
+    The sender's *user row* is locked for the duration (PostgreSQL rejects
+    `SELECT ... FOR UPDATE` combined with an aggregate, so the ledger rows
+    themselves can't be the lock). Two simultaneous sends from the same
+    low-balance user therefore serialise and the second sees the debit."""
     from apps.rooms.models import GiftEvent  # local import avoids circular import
+    from apps.rooms.services import user_in_room
+
+    if sender.pk == recipient.pk:
+        raise ValidationError("You cannot send a gift to yourself.")
+    if not room.is_live:
+        raise ValidationError("This room has ended.")
+    if not user_in_room(room, sender):
+        raise ValidationError("Join the room before sending gifts.")
+    if not user_in_room(room, recipient):
+        raise ValidationError("The recipient is not in this room.")
 
     cost = gift.cost * combo
 
-    # Lock the sender's transaction rows for the duration of this check,
-    # so a concurrent request can't read a stale balance.
-    locked_balance = (
-        Transaction.objects.select_for_update()
-        .filter(user=sender)
-        .aggregate(total=Sum("amount"))["total"]
-        or 0
-    )
-    if locked_balance < cost:
+    get_user_model().objects.select_for_update().get(pk=sender.pk)
+    if get_balance(sender) < cost:
         raise ValidationError("Insufficient coins.")
 
     event = GiftEvent.objects.create(
@@ -42,3 +48,27 @@ def send_gift(*, sender, recipient, gift, room, combo=1):
         label=f"Received {gift.name} x{combo} from {sender}", related_gift_event=event,
     )
     return event
+
+
+@transaction.atomic
+def credit_paid_order(razorpay_order_id):
+    """Marks an order paid and credits the coins exactly once, even if
+    Razorpay delivers the webhook several times concurrently.
+    Returns True if coins were credited, False if already processed.
+    Raises PaymentOrder.DoesNotExist for an unknown order."""
+    order = (
+        PaymentOrder.objects.select_for_update()
+        .select_related("package", "user")
+        .get(razorpay_order_id=razorpay_order_id)
+    )
+    if order.status == PaymentOrder.STATUS_PAID:
+        return False
+    order.status = PaymentOrder.STATUS_PAID
+    order.save(update_fields=["status"])
+    Transaction.objects.create(
+        user=order.user,
+        type=Transaction.TYPE_PURCHASE,
+        amount=order.package.coins,
+        label=f"Purchased {order.package.coins} coins",
+    )
+    return True

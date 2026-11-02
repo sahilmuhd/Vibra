@@ -54,9 +54,8 @@ Connect a WebSocket client to `ws://localhost:8000/ws/rooms/<id>/?token=<jwt acc
 
 ## What's intentionally NOT done yet (next steps)
 
-- Host moderation endpoints (force-mute, kick, ban) — `Seat`/`Room` models have the fields to support this, no views yet
 - Push notifications (would hang off `apps/notifications`)
-- Rate limiting is a blanket `300/min` per user — tighten per-endpoint (e.g. messages should be much lower)
+- Per-endpoint throttles beyond the auth scope (e.g. messages should be much lower than `300/min`)
 - Admin-side content moderation / profanity filtering on `Message.text`
 - `livekit-api` was pinned at `0.7.1` in requirements.txt but the latest
   available (1.2.0 at time of writing) was used to verify the token code —
@@ -73,9 +72,24 @@ python manage.py test --settings=config.settings_test
 node --test Front-end/tests/api.test.js Front-end/tests/app.test.js
 ```
 
-`settings_test` cannot prove row-locking behaviour (SQLite ignores
-`SELECT ... FOR UPDATE`). Seat-claiming and wallet concurrency tests (Phase 2/4)
-must run against PostgreSQL with the normal settings.
+`settings_test` on SQLite cannot prove row-locking behaviour (SQLite ignores
+`SELECT ... FOR UPDATE`). Set `TEST_DB=postgres` (plus `DB_HOST`, `DB_USER`,
+`DB_PASSWORD`) to run the same suite on PostgreSQL, which also enables the
+concurrent-gift test. CI (`.github/workflows/ci.yml`) does this on every push.
+
+## Operations
+
+- Run `python manage.py cleanup_stale_rooms` every 1-2 minutes (e.g. a Render
+  cron job). It drops participants whose WebSocket heartbeat stopped and ends
+  live rooms that have been empty for 5+ minutes.
+- Password-reset tokens and throttle counters live in the Redis cache
+  (`REDIS_URL`), so they are shared across workers.
+- Set `PRODUCTION_DOMAIN`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS` and
+  `NUM_PROXIES` (reverse proxies in front of the app; Render = 1) in the environment.
+- JWTs embed a password hash, so a password reset logs out every device.
+  Deploying this change signs everyone out once.
+- Make sure access logs do not record query strings for `/ws/` paths (the
+  socket token is passed as `?token=`).
 
 After pulling Phase 1, run `python manage.py migrate` (adds `rooms.RoomParticipant`)
 and `python manage.py makemigrations --check --dry-run` (migration 0002 was

@@ -6,10 +6,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config("DJANGO_SECRET_KEY")
 DEBUG = config("DEBUG", default=False, cast=bool)
-ALLOWED_HOSTS = list(filter(None, [
-    *config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","),
-    "vibra.sahilmuhd.com",  # production domain — always allowed
-]))
+PRODUCTION_DOMAIN = config("PRODUCTION_DOMAIN", default="vibra.sahilmuhd.com")
+
+
+def env_list(name, default=""):
+    return [item.strip() for item in config(name, default=default).split(",") if item.strip()]
+
+
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", f"localhost,127.0.0.1,{PRODUCTION_DOMAIN}")
 
 
 INSTALLED_APPS = [
@@ -66,28 +70,58 @@ DATABASES = {
     }
 }
 
+REDIS_URL = config("REDIS_URL", default="redis://localhost:6379/0")
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [config("REDIS_URL", default="redis://localhost:6379/0")]},
+        "CONFIG": {"hosts": [REDIS_URL]},
     }
 }
+
+# Shared cache: password-reset tokens and throttle counters must be visible to
+# every gunicorn/daphne worker (the default per-process locmem cache is not).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+    }
+}
+if DEBUG and not config("USE_REDIS_IN_DEBUG", default=False, cast=bool):
+    # Local dev (single process): don't require a running Redis.
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_THROTTLE_CLASSES": ("rest_framework.throttling.UserRateThrottle",),
-    "DEFAULT_THROTTLE_RATES": {"user": "300/minute"},  # basic anti-spam floor
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/minute",
+        "user": "300/minute",  # basic anti-spam floor
+        "auth": "10/minute",   # login / signup / guest / password reset, per IP
+    },
+    # Number of reverse proxies in front of the app (Render = 1) so throttling
+    # keys on the real client IP instead of the proxy's.
+    "NUM_PROXIES": config("NUM_PROXIES", default=1, cast=int),
 }
 
-CORS_ALLOWED_ORIGINS = list(filter(None, [
-    *config("CORS_ALLOWED_ORIGINS", default="").split(","),
-    # Always allow the live site — remove this if you add it to your env var instead
-    "https://vibra.sahilmuhd.com",
-]))
-CORS_ALLOW_CREDENTIALS = True
+SIMPLE_JWT = {
+    # Tokens carry a hash of the password, so changing it (e.g. password reset)
+    # invalidates every previously issued access/refresh token.
+    "CHECK_REVOKE_TOKEN": True,
+}
+
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", f"https://{PRODUCTION_DOMAIN}")
+# Auth is via Authorization-header JWTs, not cookies, so credentials are only
+# needed for an explicit allow-list; never combine them with allow-all.
+CORS_ALLOW_CREDENTIALS = not DEBUG
 # In dev, also allow requests from file:// (origin=null) and any localhost port.
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
@@ -112,6 +146,24 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+# --- HTTPS / cookie hardening (production only) ---
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
+    SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=31536000, cast=int)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    CSRF_TRUSTED_ORIGINS = [f"https://{PRODUCTION_DOMAIN}"]
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"std": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "std"}},
+    "root": {"handlers": ["console"], "level": config("LOG_LEVEL", default="INFO")},
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Third-party services (set real values via env in Render dashboard) ---
@@ -134,4 +186,4 @@ EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="Vibra <noreply@vibra.sahilmuhd.com>")
-FRONTEND_URL = config("FRONTEND_URL", default="https://vibra.sahilmuhd.com")
+FRONTEND_URL = config("FRONTEND_URL", default=f"https://{PRODUCTION_DOMAIN}")

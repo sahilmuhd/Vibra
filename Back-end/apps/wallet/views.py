@@ -1,20 +1,22 @@
 import razorpay
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.rooms.models import Gift, Room
-from apps.rooms.serializers import GiftSerializer
+from apps.rooms.realtime import broadcast_to_room
+from apps.rooms.serializers import GiftSerializer, SendGiftSerializer
 
-from .models import CoinPackage, PaymentOrder, Transaction
+from .models import CoinPackage, PaymentOrder
 from .serializers import (
     CoinPackageSerializer,
     CreateOrderSerializer,
     TransactionSerializer,
 )
-from .services import get_balance, send_gift
+from .services import credit_paid_order, get_balance, send_gift
 
 razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
@@ -72,6 +74,7 @@ class RazorpayWebhookView(APIView):
     user can't fake a successful payment from devtools."""
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+    throttle_classes = []
 
     def post(self, request):
         signature = request.headers.get("X-Razorpay-Signature", "")
@@ -86,23 +89,15 @@ class RazorpayWebhookView(APIView):
         if payload.get("event") != "order.paid":
             return Response(status=status.HTTP_200_OK)
 
-        order_id = payload["payload"]["order"]["entity"]["id"]
         try:
-            order = PaymentOrder.objects.select_related("package", "user").get(
-                razorpay_order_id=order_id
-            )
+            order_id = payload["payload"]["order"]["entity"]["id"]
+        except (KeyError, TypeError):
+            return Response({"detail": "Malformed payload."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            credit_paid_order(order_id)
         except PaymentOrder.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-
-        if order.status != PaymentOrder.STATUS_PAID:
-            order.status = PaymentOrder.STATUS_PAID
-            order.save(update_fields=["status"])
-            Transaction.objects.create(
-                user=order.user,
-                type=Transaction.TYPE_PURCHASE,
-                amount=order.package.coins,
-                label=f"Purchased {order.package.coins} coins",
-            )
         return Response(status=status.HTTP_200_OK)
 
 
@@ -116,39 +111,27 @@ class SendGiftView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        from apps.rooms.serializers import SendGiftSerializer
-
         serializer = SendGiftSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
         room = get_object_or_404(Room, id=data["room_id"])
         gift = get_object_or_404(Gift, id=data["gift_id"])
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        recipient = get_object_or_404(User, id=data["recipient_id"])
+        recipient = get_object_or_404(get_user_model(), id=data["recipient_id"])
 
         event = send_gift(
             sender=request.user, recipient=recipient, gift=gift, room=room, combo=data["combo"]
         )
 
-        # Broadcast to the room's WebSocket group so every client sees the
-        # gift animation live — see apps/rooms/consumers.py
-        from channels.layers import get_channel_layer
-        from asgiref.sync import async_to_sync
-
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f"room_{room.id}",
-            {
-                "type": "gift.sent",
-                "sender_id": request.user.id,
-                "sender_name": request.user.username,
-                "recipient_id": recipient.id,
-                "gift_id": gift.id,
-                "gift_name": gift.name,
-                "gift_emoji": gift.emoji,
-                "combo": data["combo"],
-            },
-        )
+        # Fan out to the room's WebSocket group so every client sees the gift
+        # animation live. Failures are logged, never raised: the gift is already paid.
+        broadcast_to_room(room.id, "gift.sent", {
+            "sender_id": request.user.id,
+            "sender_name": request.user.username,
+            "recipient_id": recipient.id,
+            "gift_id": gift.id,
+            "gift_name": gift.name,
+            "gift_emoji": gift.emoji,
+            "combo": data["combo"],
+        })
         return Response({"gift_event_id": event.id, "balance": get_balance(request.user)})

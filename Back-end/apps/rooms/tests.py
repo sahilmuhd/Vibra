@@ -1,5 +1,7 @@
+import asyncio
 from unittest import mock
 
+from channels.db import database_sync_to_async
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
@@ -11,7 +13,7 @@ from apps.accounts.models import Profile
 from config.jwt_auth_middleware import JWTAuthMiddleware
 from config.routing import websocket_urlpatterns
 
-from .models import HandRaise, Message, Room, RoomParticipant, Seat
+from .models import HandRaise, Message, Room, RoomBan, RoomParticipant, Seat
 
 User = get_user_model()
 
@@ -243,6 +245,7 @@ class WebSocketTests(TransactionTestCase):
     def setUp(self):
         self.host = make_user("hosty")
         self.room = Room.objects.create(name="WS room", category="talk", host=self.host, voice_room_name="vibra-wstest")
+        RoomParticipant.objects.create(room=self.room, user=self.host)
         self.app = JWTAuthMiddleware(URLRouter(websocket_urlpatterns))
         self.path = f"/ws/rooms/{self.room.id}/"
 
@@ -255,21 +258,18 @@ class WebSocketTests(TransactionTestCase):
         legit = self.comm(token)
         connected, _ = await legit.connect()
         self.assertTrue(connected)
-        joined = await legit.receive_json_from()
-        self.assertEqual((joined["event"], joined["action"]), ("presence_update", "joined"))
 
         for bad in (self.comm(), self.comm("not-a-jwt")):
             ok, _ = await bad.connect()
             self.assertFalse(ok)
             await bad.disconnect()
-        # Before the fix a rejected socket broadcast {"user_id": null, "action": "left"}.
+        # A rejected socket must not broadcast anything into the room.
         self.assertTrue(await legit.receive_nothing(timeout=0.3))
         await legit.disconnect()
 
     async def test_non_object_frames_do_not_crash_consumer(self):
         legit = self.comm(str(AccessToken.for_user(self.host)))
         await legit.connect()
-        await legit.receive_json_from()
         await legit.send_json_to([1, 2, 3])
         self.assertTrue(await legit.receive_nothing(timeout=0.2))
         await legit.disconnect()
@@ -278,6 +278,96 @@ class WebSocketTests(TransactionTestCase):
         comm = WebsocketCommunicator(self.app, f"/ws/rooms/999999/?token={AccessToken.for_user(self.host)}")
         connected, _ = await comm.connect()
         self.assertFalse(connected)
+
+    async def test_non_participant_cannot_listen(self):
+        outsider = await database_sync_to_async(make_user)("outsider")
+        connected, _ = await self.comm(str(AccessToken.for_user(outsider))).connect()
+        self.assertFalse(connected)
+
+    async def test_banned_user_cannot_listen(self):
+        user = await database_sync_to_async(make_user)("banned")
+
+        def setup():
+            RoomParticipant.objects.create(room=self.room, user=user)
+            RoomBan.objects.create(room=self.room, user=user)
+
+        await database_sync_to_async(setup)()
+        connected, _ = await self.comm(str(AccessToken.for_user(user))).connect()
+        self.assertFalse(connected)
+
+    async def test_speaking_tick_level_is_clamped_and_garbage_dropped(self):
+        legit = self.comm(str(AccessToken.for_user(self.host)))
+        await legit.connect()
+        await legit.send_json_to({"type": "speaking_tick", "level": 99})
+        msg = await legit.receive_json_from()
+        self.assertEqual((msg["event"], msg["level"]), ("speaking_tick", 1.0))
+        await asyncio.sleep(0.15)
+        await legit.send_json_to({"type": "speaking_tick", "level": "loud"})
+        self.assertTrue(await legit.receive_nothing(timeout=0.2))
+        await legit.disconnect()
+
+
+class ModerationHardeningTests(RoomBase):
+    def setUp(self):
+        super().setUp()
+        self.rid = self.create_room().data["id"]
+        self.alice_c.post(f"/api/rooms/{self.rid}/join/")
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/take/")
+
+    def test_host_muted_speaker_cannot_self_unmute_until_lifted(self):
+        self.host_c.post(f"/api/rooms/{self.rid}/seats/1/force-mute/")
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/mute/").status_code, 403)
+        self.host_c.post(f"/api/rooms/{self.rid}/seats/1/force-mute/", {"muted": False}, format="json")
+        res = self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/mute/")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data["is_muted"])
+
+    def test_kicked_user_is_banned_from_rejoining(self):
+        self.host_c.post(f"/api/rooms/{self.rid}/kick/", {"user_id": self.alice.id}, format="json")
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/join/").status_code, 403)
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/seats/2/take/").status_code, 403)
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/voice-token/").status_code, 403)
+
+    def test_kick_unknown_user_is_404(self):
+        res = self.host_c.post(f"/api/rooms/{self.rid}/kick/", {"user_id": 999999}, format="json")
+        self.assertEqual(res.status_code, 404)
+
+    def test_non_participant_cannot_read_messages_or_raise_hand(self):
+        self.assertEqual(self.bob_c.get(f"/api/rooms/{self.rid}/messages/").status_code, 403)
+        self.assertEqual(self.bob_c.post(f"/api/rooms/{self.rid}/hand-raise/").status_code, 403)
+
+    def test_voice_token_requires_membership_and_live_room(self):
+        self.assertEqual(self.bob_c.post(f"/api/rooms/{self.rid}/voice-token/").status_code, 403)
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/voice-token/").status_code, 200)
+        Room.objects.filter(id=self.rid).update(is_live=False)
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/voice-token/").status_code, 410)
+
+    def test_host_live_room_cap(self):
+        for _ in range(2):
+            self.assertEqual(self.create_room().status_code, 201)
+        self.assertEqual(self.create_room().status_code, 403)
+
+
+class CleanupStaleRoomsTests(RoomBase):
+    def test_drops_stale_participants_and_ends_empty_rooms(self):
+        from datetime import timedelta
+
+        from django.core.management import call_command
+        from django.utils import timezone
+
+        rid = self.create_room().data["id"]
+        self.alice_c.post(f"/api/rooms/{rid}/join/")
+        old = timezone.now() - timedelta(minutes=30)
+        RoomParticipant.objects.filter(room_id=rid, user=self.alice).update(last_seen=old)
+        call_command("cleanup_stale_rooms")
+        self.assertFalse(RoomParticipant.objects.filter(room_id=rid, user=self.alice).exists())
+        self.assertTrue(Room.objects.get(id=rid).is_live)  # host still present
+
+        RoomParticipant.objects.filter(room_id=rid).update(last_seen=old)
+        Room.objects.filter(id=rid).update(created_at=old)
+        call_command("cleanup_stale_rooms")
+        self.assertFalse(Room.objects.get(id=rid).is_live)
+        self.assertEqual(Seat.objects.filter(room_id=rid).exclude(user=None).count(), 0)
 
 
 class HostModerationTests(RoomBase):

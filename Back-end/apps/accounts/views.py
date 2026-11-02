@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 
@@ -18,6 +19,7 @@ from .models import Profile
 from .profiles import ensure_profile
 from .serializers import ProfileSerializer, SignupSerializer, VibraTokenObtainPairSerializer
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -27,10 +29,12 @@ def tokens_for(user):
 
 
 class LoginView(TokenObtainPairView):
+    throttle_scope = "auth"
     serializer_class = VibraTokenObtainPairSerializer
 
 
 class SignupView(APIView):
+    throttle_scope = "auth"
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -46,6 +50,7 @@ class SignupView(APIView):
 class GuestLoginView(APIView):
     """Matches the prototype's 'Continue as Guest' button — creates a
     throwaway account so the product can still be tried without signup."""
+    throttle_scope = "auth"
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -83,6 +88,7 @@ class PublicProfileView(generics.RetrieveAPIView):
 class PasswordResetRequestView(APIView):
     """Step 1: User submits their email. We generate a secure token,
     cache it for 1 hour, and email a reset link."""
+    throttle_scope = "auth"
     permission_classes = [permissions.AllowAny]
     CACHE_TTL = 3600  # 1 hour
 
@@ -102,26 +108,30 @@ class PasswordResetRequestView(APIView):
             frontend_url = getattr(settings, "FRONTEND_URL", "https://vibra.sahilmuhd.com")
             reset_link = f"{frontend_url}/?reset_token={token}"
 
-            send_mail(
-                subject="Reset your Vibra password",
-                message=(
-                    f"Hi {user.username},\n\n"
-                    f"Someone requested a password reset for your Vibra account.\n"
-                    f"Click the link below to set a new password (expires in 1 hour):\n\n"
-                    f"{reset_link}\n\n"
-                    f"If you didn't request this, just ignore this email.\n\n"
-                    f"— The Vibra Team"
-                ),
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@vibra.sahilmuhd.com"),
-                recipient_list=[email],
-                fail_silently=True,
-            )
+            try:
+                send_mail(
+                    subject="Reset your Vibra password",
+                    message=(
+                        f"Hi {user.username},\n\n"
+                        f"Someone requested a password reset for your Vibra account.\n"
+                        f"Click the link below to set a new password (expires in 1 hour):\n\n"
+                        f"{reset_link}\n\n"
+                        f"If you didn't request this, just ignore this email.\n\n"
+                        f"— The Vibra Team"
+                    ),
+                    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@vibra.sahilmuhd.com"),
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+            except Exception:  # noqa: BLE001 - never reveal delivery failure to the caller
+                logger.exception("Password reset email failed for user %s", user.pk)
 
         return Response({"detail": "If that email is registered, a reset link has been sent."})
 
 
 class PasswordResetConfirmView(APIView):
     """Step 2: User clicks the link, submits token + new password."""
+    throttle_scope = "auth"
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):

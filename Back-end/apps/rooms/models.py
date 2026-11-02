@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 User = settings.AUTH_USER_MODEL
 
@@ -36,10 +37,23 @@ class RoomParticipant(models.Model):
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="participants")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="+")
     joined_at = models.DateTimeField(auto_now_add=True)
+    # Refreshed while the user has a live WebSocket; `cleanup_stale_rooms`
+    # drops participants whose heartbeat stopped (crashed tab, lost network).
+    last_seen = models.DateTimeField(default=timezone.now)
 
     class Meta:
         unique_together = ("room", "user")
         ordering = ["joined_at"]
+
+
+class RoomBan(models.Model):
+    """A user kicked by the host; blocks rejoining for the room's lifetime."""
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="bans")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("room", "user")
 
 
 class Seat(models.Model):
@@ -49,6 +63,8 @@ class Seat(models.Model):
     position = models.PositiveSmallIntegerField()
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     is_muted = models.BooleanField(default=True)
+    # Set by a host force-mute; the occupant cannot self-unmute until the host clears it.
+    muted_by_host = models.BooleanField(default=False)
     is_locked = models.BooleanField(default=False)
 
     class Meta:
