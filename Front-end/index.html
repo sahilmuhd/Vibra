@@ -1015,6 +1015,61 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 @media (min-width:1400px){
   .room-grid{ grid-template-columns:1fr 1fr 1fr; }
 }
+
+/* ---- Unified icon system (Lucide) ---- */
+i[data-lucide]{ display:inline-flex; }
+svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical-align:-0.18em; }
+.back-btn{ display:inline-flex; align-items:center; justify-content:center; }
+.back-btn svg, .icon-btn svg{ width:20px; height:20px; }
+.send-btn{ display:inline-flex; align-items:center; justify-content:center; }
+.send-btn svg{ width:19px; height:19px; stroke-width:2.2; }
+.chat-input-bar .icon-btn svg{ width:21px; height:21px; }
+.sheet-title .icon-btn svg, .reply-preview .close svg{ width:18px; height:18px; }
+.reply-preview .close{ display:inline-flex; align-items:center; }
+.btn svg{ width:17px; height:17px; }
+.vc-btn .ic svg{ width:21px; height:21px; }
+.sheet-action-row .ic svg, .settings-row .ic svg{ width:18px; height:18px; color:var(--text-secondary); }
+.sheet-action-row.danger .ic svg, .settings-row.danger .ic svg{ color:var(--danger); }
+.settings-row .chev{ display:inline-flex; align-items:center; gap:4px; }
+.settings-row .chev svg{ width:18px; height:18px; }
+.privacy-opt .ic{ display:flex; justify-content:center; color:var(--accent-2); }
+.privacy-opt .ic svg{ width:24px; height:24px; }
+.image-picker .ic svg{ width:30px; height:30px; color:var(--accent-2); }
+.confirm-box .ic{ display:flex; justify-content:center; color:var(--accent-2); }
+.confirm-box .ic svg{ width:38px; height:38px; }
+.wallet-hero .balance svg{ width:34px; height:34px; }
+.gcost{ display:inline-flex; align-items:center; gap:4px; }
+.gcost svg, .package-card .coins svg{ width:14px; height:14px; color:var(--gold); }
+.package-card .coins{ display:flex; align-items:center; justify-content:center; gap:6px; }
+.tx-row .tx-icon svg{ width:18px; height:18px; }
+.notif-row .ic svg{ width:19px; height:19px; }
+.mic-status{ display:inline-flex; align-items:center; justify-content:center; }
+.mic-status svg{ width:13px; height:13px; }
+.mic-seat.muted .mic-status svg{ color:var(--danger); }
+.mic-seat.speaking .mic-status svg{ color:var(--success); }
+.avatar-frame svg{ width:22px; height:22px; }
+.seat-crown{ display:inline-flex; color:var(--gold); }
+.seat-crown svg{ width:16px; height:16px; fill:currentColor; }
+.seat-gift-pill{ display:inline-flex; align-items:center; gap:2px; }
+.seat-gift-pill svg{ width:10px; height:10px; }
+.room-badge{ display:inline-flex; align-items:center; gap:5px; }
+.room-badge svg{ width:11px; height:11px; }
+.live-dot{ width:7px; height:7px; border-radius:50%; background:#ff4d6d; box-shadow:0 0 0 0 rgba(255,77,109,.7); animation:livePulse 1.6s infinite; flex-shrink:0; }
+@keyframes livePulse{ 70%{ box-shadow:0 0 0 7px rgba(255,77,109,0); } 100%{ box-shadow:0 0 0 0 rgba(255,77,109,0); } }
+.r-approve, .r-decline{ display:inline-flex; align-items:center; justify-content:center; }
+.r-approve svg, .r-decline svg{ width:18px; height:18px; }
+.toast{ display:flex; align-items:center; gap:8px; }
+.toast svg{ width:18px; height:18px; }
+.toast.success svg{ color:var(--success); }
+.toast.error svg{ color:var(--danger); }
+.empty-state .emoji{ width:68px; height:68px; margin:0 auto 14px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-grad-soft); border:1px solid var(--border-glass-strong); color:var(--accent-2); font-size:28px; }
+.empty-state .emoji svg{ width:30px; height:30px; }
+.profile-country, .profile-badges span{ display:inline-flex; align-items:center; gap:5px; }
+.profile-country svg{ width:14px; height:14px; }
+.achieve-row .ic{ display:flex; align-items:center; justify-content:center; color:var(--gold); }
+.achieve-row .ic svg{ width:22px; height:22px; }
+.msg-reply-quote svg{ width:12px; height:12px; }
+.sub svg{ width:13px; height:13px; }
 </style>
 </head>
 <body>
@@ -1355,7 +1410,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <!-- ============================= OVERLAY: ROOM / CHAT ============================= -->
   <div class="overlay-screen" id="screen-room">
     <div class="ov-header">
-      <button class="back-btn" id="room-back" aria-label="Leave room">←</button>
+      <button class="back-btn" id="room-back" aria-label="Leave room"><i data-lucide="arrow-left"></i></button>
       <div class="title-block">
         <h2 id="room-title">Room</h2>
         <div style="display:flex; align-items:center; gap:8px;">
@@ -1390,33 +1445,33 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
       <div class="reply-preview" id="reply-preview">
         <div class="bar"></div>
         <div class="body"><span class="who" id="reply-who"></span><div class="snip" id="reply-snip"></div></div>
-        <button class="close" id="reply-cancel">✕</button>
+        <button class="close" id="reply-cancel"><i data-lucide="x"></i></button>
       </div>
       <div class="emoji-picker" id="emoji-picker"></div>
       <div class="mention-suggestions" id="mention-suggestions"></div>
       <div class="chat-input-bar">
-        <button class="icon-btn" id="emoji-toggle" aria-label="Open emoji picker">😊</button>
+        <button class="icon-btn" id="emoji-toggle" aria-label="Open emoji picker"><i data-lucide="smile"></i></button>
         <div class="input-wrap"><input type="text" id="chat-input" placeholder="Say something nice..." maxlength="200"></div>
         <span class="char-counter" id="chat-char-counter">0/200</span>
-        <button class="icon-btn" id="gift-open-btn" aria-label="Send a gift">🎁</button>
-        <button class="send-btn" id="chat-send">➤</button>
+        <button class="icon-btn" id="gift-open-btn" aria-label="Send a gift"><i data-lucide="gift"></i></button>
+        <button class="send-btn" id="chat-send"><i data-lucide="send-horizontal"></i></button>
       </div>
       <div class="voice-controls">
-        <button type="button" class="vc-btn" id="vc-mic"><span class="ic">🎤</span>Mic</button>
-        <button type="button" class="vc-btn" id="vc-speaker"><span class="ic">🔊</span>Speaker</button>
-        <button type="button" class="vc-btn" id="vc-gift"><span class="ic">🎁</span>Gift</button>
-        <button type="button" class="vc-btn" id="vc-hand"><span class="ic">✋</span><span id="vc-hand-label">Raise</span></button>
-        <button type="button" class="vc-btn" id="vc-participants"><span class="ic">👥</span>People</button>
-        <button type="button" class="vc-btn leave" id="vc-leave"><span class="ic">✕</span>Leave</button>
+        <button type="button" class="vc-btn" id="vc-mic"><span class="ic"><i data-lucide="mic"></i></span>Mic</button>
+        <button type="button" class="vc-btn" id="vc-speaker"><span class="ic"><i data-lucide="volume-2"></i></span>Speaker</button>
+        <button type="button" class="vc-btn" id="vc-gift"><span class="ic"><i data-lucide="gift"></i></span>Gift</button>
+        <button type="button" class="vc-btn" id="vc-hand"><span class="ic"><i data-lucide="hand"></i></span><span id="vc-hand-label">Raise</span></button>
+        <button type="button" class="vc-btn" id="vc-participants"><span class="ic"><i data-lucide="users"></i></span>People</button>
+        <button type="button" class="vc-btn leave" id="vc-leave"><span class="ic"><i data-lucide="log-out"></i></span>Leave</button>
       </div>
     </div>
   </div>
 
   <!-- ============================= OVERLAY: WALLET ============================= -->
   <div class="overlay-screen" id="screen-wallet">
-    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-wallet">←</button><div class="title-block"><h2>Wallet</h2></div></div>
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-wallet"><i data-lucide="arrow-left"></i></button><div class="title-block"><h2>Wallet</h2></div></div>
     <div class="ov-body">
-      <div class="wallet-hero"><div class="label">Current Balance</div><div class="balance">🪙 <span id="wallet-balance">0</span> Coins</div></div>
+      <div class="wallet-hero"><div class="label">Current Balance</div><div class="balance"><i data-lucide="coins"></i> <span id="wallet-balance">0</span> Coins</div></div>
       <div class="wallet-actions">
         <button class="btn btn-primary" id="buy-coins-btn">Buy Coins</button>
         <button class="btn btn-glass" id="tx-history-btn">Transaction History</button>
@@ -1432,14 +1487,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 
   <!-- ============================= OVERLAY: PROFILE (other users) ============================= -->
   <div class="overlay-screen" id="screen-user-profile">
-    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-user-profile">←</button><div class="title-block"><h2>Profile</h2></div><button class="icon-btn" id="share-profile-btn" aria-label="Share profile">🔗</button></div>
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-user-profile"><i data-lucide="arrow-left"></i></button><div class="title-block"><h2>Profile</h2></div><button class="icon-btn" id="share-profile-btn" aria-label="Share profile"><i data-lucide="share-2"></i></button></div>
     <div class="ov-body" id="user-profile-target"></div>
   </div>
 
   <!-- ============================= OVERLAY: DIRECT MESSAGE ============================= -->
   <div class="overlay-screen" id="screen-dm">
     <div class="ov-header">
-      <button class="back-btn" aria-label="Back" data-close-overlay="screen-dm">←</button>
+      <button class="back-btn" aria-label="Back" data-close-overlay="screen-dm"><i data-lucide="arrow-left"></i></button>
       <div class="vibra-ring"><img class="avatar" id="dm-avatar" style="width:38px;height:38px;" src="" alt=""></div>
       <div class="title-block"><h2 id="dm-name">User</h2><div class="sub" id="dm-status">Online</div></div>
     </div>
@@ -1447,32 +1502,32 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
     <div style="position:relative;">
       <div class="emoji-picker" id="dm-emoji-picker"></div>
       <div class="chat-input-bar">
-        <button class="icon-btn" id="dm-emoji-toggle" aria-label="Open emoji picker">😊</button>
+        <button class="icon-btn" id="dm-emoji-toggle" aria-label="Open emoji picker"><i data-lucide="smile"></i></button>
         <div class="input-wrap"><input type="text" id="dm-input" placeholder="Type a message..." maxlength="300"></div>
-        <button class="send-btn" id="dm-send">➤</button>
+        <button class="send-btn" id="dm-send"><i data-lucide="send-horizontal"></i></button>
       </div>
     </div>
   </div>
 
   <!-- ============================= OVERLAY: NOTIFICATIONS ============================= -->
   <div class="overlay-screen" id="screen-notifications">
-    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-notifications">←</button><div class="title-block"><h2>Notifications</h2></div></div>
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-notifications"><i data-lucide="arrow-left"></i></button><div class="title-block"><h2>Notifications</h2></div></div>
     <div class="ov-body" id="notifications-list"></div>
   </div>
 
   <!-- ============================= OVERLAY: CREATE ROOM ============================= -->
   <div class="overlay-screen" id="screen-create-room">
-    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-create-room">←</button><div class="title-block"><h2>Create Room</h2></div></div>
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-create-room"><i data-lucide="arrow-left"></i></button><div class="title-block"><h2>Create Room</h2></div></div>
     <div class="ov-body">
       <form class="form-wrap" id="create-room-form">
-        <div class="image-picker" id="cr-image-picker"><span class="ic">🖼️</span>Add a cover image</div>
+        <div class="image-picker" id="cr-image-picker"><span class="ic"><i data-lucide="image-plus"></i></span>Add a cover image</div>
         <div class="field"><label>Room name</label><div class="input-wrap"><input type="text" id="cr-name" placeholder="e.g. Midnight Music Room" maxlength="40"></div></div>
         <div class="field"><label>Description</label><div class="input-wrap"><textarea id="cr-desc" placeholder="What's this room about?" maxlength="140"></textarea></div></div>
         <div class="field"><label>Category</label><div class="category-select" id="cr-category"></div></div>
         <div class="field"><label>Privacy</label>
           <div class="privacy-toggle">
-            <div class="privacy-opt active" data-privacy="public"><div class="ic">🌍</div><div class="t">Public</div><div class="d">Anyone can join</div></div>
-            <div class="privacy-opt" data-privacy="private"><div class="ic">🔒</div><div class="t">Private</div><div class="d">Invite only</div></div>
+            <div class="privacy-opt active" data-privacy="public"><div class="ic"><i data-lucide="globe"></i></div><div class="t">Public</div><div class="d">Anyone can join</div></div>
+            <div class="privacy-opt" data-privacy="private"><div class="ic"><i data-lucide="lock"></i></div><div class="t">Private</div><div class="d">Invite only</div></div>
           </div>
         </div>
         <div style="display:flex; gap:10px; margin-top:20px;">
@@ -1485,26 +1540,26 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 
   <!-- ============================= OVERLAY: SETTINGS ============================= -->
   <div class="overlay-screen" id="screen-settings">
-    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-settings">←</button><div class="title-block"><h2>Settings</h2></div></div>
+    <div class="ov-header"><button class="back-btn" aria-label="Back" data-close-overlay="screen-settings"><i data-lucide="arrow-left"></i></button><div class="title-block"><h2>Settings</h2></div></div>
     <div class="ov-body">
       <div class="settings-group">
         <div class="group-title">Account</div>
-        <div class="settings-row"><div class="left"><div class="ic">🧑</div><div class="label">Edit profile</div></div><div class="chev">›</div></div>
-        <div class="settings-row"><div class="left"><div class="ic">🔐</div><div class="label">Account settings</div></div><div class="chev">›</div></div>
-        <div class="settings-row"><div class="left"><div class="ic">🛡️</div><div class="label">Privacy settings</div></div><div class="chev">›</div></div>
+        <div class="settings-row"><div class="left"><div class="ic"><i data-lucide="user-round"></i></div><div class="label">Edit profile</div></div><div class="chev"><i data-lucide="chevron-right"></i></div></div>
+        <div class="settings-row"><div class="left"><div class="ic"><i data-lucide="key-round"></i></div><div class="label">Account settings</div></div><div class="chev"><i data-lucide="chevron-right"></i></div></div>
+        <div class="settings-row"><div class="left"><div class="ic"><i data-lucide="shield-check"></i></div><div class="label">Privacy settings</div></div><div class="chev"><i data-lucide="chevron-right"></i></div></div>
       </div>
       <div class="settings-group">
         <div class="group-title">Preferences</div>
-        <div class="settings-row"><div class="left"><div class="ic">🔔</div><div class="label">Notifications</div></div><div class="switch on" id="toggle-notif"></div></div>
-        <div class="settings-row"><div class="left"><div class="ic">🌐</div><div class="label">Language</div></div><div class="chev">English ›</div></div>
-        <div class="settings-row"><div class="left"><div class="ic">🌙</div><div class="label">Dark mode</div></div><div class="switch on" id="toggle-dark"></div></div>
+        <div class="settings-row"><div class="left"><div class="ic"><i data-lucide="bell"></i></div><div class="label">Notifications</div></div><div class="switch on" id="toggle-notif"></div></div>
+        <div class="settings-row"><div class="left"><div class="ic"><i data-lucide="languages"></i></div><div class="label">Language</div></div><div class="chev">English <i data-lucide="chevron-right"></i></div></div>
+        <div class="settings-row"><div class="left"><div class="ic"><i data-lucide="moon"></i></div><div class="label">Dark mode</div></div><div class="switch on" id="toggle-dark"></div></div>
       </div>
       <div class="settings-group">
         <div class="group-title">Support</div>
-        <div class="settings-row"><div class="left"><div class="ic">❓</div><div class="label">Help center</div></div><div class="chev">›</div></div>
+        <div class="settings-row"><div class="left"><div class="ic"><i data-lucide="circle-help"></i></div><div class="label">Help center</div></div><div class="chev"><i data-lucide="chevron-right"></i></div></div>
       </div>
       <div class="settings-group">
-        <div class="settings-row danger" id="logout-btn"><div class="left"><div class="ic">🚪</div><div class="label">Logout</div></div></div>
+        <div class="settings-row danger" id="logout-btn"><div class="left"><div class="ic"><i data-lucide="log-out"></i></div><div class="label">Logout</div></div></div>
       </div>
     </div>
   </div>
@@ -1513,7 +1568,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop" id="gift-modal">
     <div class="modal-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">Send a gift <button class="icon-btn" aria-label="Close" data-close-modal="gift-modal">✕</button></div>
+      <div class="sheet-title">Send a gift <button class="icon-btn" aria-label="Close" data-close-modal="gift-modal"><i data-lucide="x"></i></button></div>
       <div class="gift-recipient"><img class="avatar" id="gift-recipient-avatar" src="" style="width:34px;height:34px;flex-shrink:0;" alt=""><div style="min-width:0;"><div style="font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Sending to <span id="gift-recipient-name">Host</span></div><div style="font-size:11.5px; color:var(--text-secondary);" class="mono">🪙 <span id="gift-modal-balance">0</span> available</div></div></div>
       <div class="gift-grid" id="gift-grid"></div>
       <button class="btn btn-primary btn-block" id="gift-send-btn" style="margin-top:6px;">Send Gift</button>
@@ -1523,7 +1578,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop" id="participants-modal">
     <div class="modal-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">Participants <button class="icon-btn" aria-label="Close" data-close-modal="participants-modal">✕</button></div>
+      <div class="sheet-title">Participants <button class="icon-btn" aria-label="Close" data-close-modal="participants-modal"><i data-lucide="x"></i></button></div>
       <div id="participants-list"></div>
     </div>
   </div>
@@ -1531,11 +1586,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop" id="seat-profile-modal">
     <div class="modal-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">Profile <button class="icon-btn" aria-label="Close" data-close-modal="seat-profile-modal">✕</button></div>
+      <div class="sheet-title">Profile <button class="icon-btn" aria-label="Close" data-close-modal="seat-profile-modal"><i data-lucide="x"></i></button></div>
       <div class="seat-profile-head">
         <img class="avatar" id="seat-profile-avatar" src="" style="width:74px;height:74px;" alt="">
         <div class="name-row"><span id="seat-profile-name">Name</span><span class="level-badge" id="seat-profile-level">Lv 1</span></div>
-        <div class="sub" id="seat-profile-sub">🎙️ On mic</div>
+        <div class="sub" id="seat-profile-sub"><i data-lucide="mic"></i> On mic</div>
       </div>
       <div class="seat-profile-actions" id="seat-profile-actions"></div>
     </div>
@@ -1544,7 +1599,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop" id="requests-modal">
     <div class="modal-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">Mic requests <button class="icon-btn" aria-label="Close" data-close-modal="requests-modal">✕</button></div>
+      <div class="sheet-title">Mic requests <button class="icon-btn" aria-label="Close" data-close-modal="requests-modal"><i data-lucide="x"></i></button></div>
       <div id="requests-list"></div>
     </div>
   </div>
@@ -1552,7 +1607,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop" id="room-more-modal">
     <div class="modal-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">Room options <button class="icon-btn" aria-label="Close" data-close-modal="room-more-modal">✕</button></div>
+      <div class="sheet-title">Room options <button class="icon-btn" aria-label="Close" data-close-modal="room-more-modal"><i data-lucide="x"></i></button></div>
       <div id="room-more-list"></div>
     </div>
   </div>
@@ -1560,7 +1615,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop center-align" id="end-room-modal">
     <div class="modal-sheet center">
       <div class="confirm-box">
-        <div class="ic">🛑</div>
+        <div class="ic"><i data-lucide="octagon-x"></i></div>
         <h3>End this room?</h3>
         <p>This will close the room for everyone and release all seats.</p>
         <div class="confirm-actions">
@@ -1574,7 +1629,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop center-align" id="logout-modal">
     <div class="modal-sheet center">
       <div class="confirm-box">
-        <div class="ic">🚪</div>
+        <div class="ic"><i data-lucide="log-out"></i></div>
         <h3>Log out of Vibra?</h3>
         <p>You'll need to sign in again to rejoin your rooms and chats.</p>
         <div class="confirm-actions">
@@ -1588,7 +1643,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   <div class="modal-backdrop center-align" id="payment-modal">
     <div class="modal-sheet center">
       <div class="confirm-box">
-        <div class="ic" id="payment-icon">💳</div>
+        <div class="ic" id="payment-icon"><i data-lucide="credit-card"></i></div>
         <h3 id="payment-title">Confirm purchase</h3>
         <p id="payment-desc">Buy 500 Coins for ₹399?</p>
         <div class="confirm-actions">
@@ -1728,7 +1783,7 @@ const DATA = (function(){
 })();
 </script>
 
-<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/lucide@0.468.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script src="api.js"></script>
 <script src="app.js"></script>

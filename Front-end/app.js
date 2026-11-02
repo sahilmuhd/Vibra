@@ -129,13 +129,25 @@ function seededRandom(seed){
   return Math.abs(Math.sin(h)) % 1;
 }
 
+/* ---------------------------- ICONS (Lucide) ------------------------------- */
+function ic(name){ return `<i data-lucide="${name}"></i>`; }
+let _iconRaf = 0;
+function refreshIcons(){
+  if(!window.lucide || _iconRaf) return;
+  _iconRaf = requestAnimationFrame(()=>{ _iconRaf = 0; lucide.createIcons(); });
+}
+// Dynamic renders just emit ic('name'); this swaps them for SVGs.
+if(typeof MutationObserver !== 'undefined' && typeof document !== 'undefined'){
+  new MutationObserver(refreshIcons).observe(document.documentElement, {childList:true, subtree:true});
+}
+
 function showToast(message, type){
   type = type || 'info';
   const stack = document.getElementById('toast-stack');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  const icon = type==='success' ? '✅' : type==='error' ? '⚠️' : '💬';
-  el.innerHTML = `<span>${icon}</span><span>${escapeHTML(message)}</span>`;
+  const icon = ic(type==='success' ? 'circle-check' : type==='error' ? 'triangle-alert' : 'info');
+  el.innerHTML = `${icon}<span>${escapeHTML(message)}</span>`;
   stack.appendChild(el);
   setTimeout(()=> el.remove(), 3000);
 }
@@ -334,7 +346,7 @@ function roomCardHTML(room){
   <div class="room-card" data-room-id="${escapeAttr(room.id)}" style="--rgrad:${room.grad}">
     <div style="position:absolute; inset:0; background:${room.grad}; opacity:0.9; z-index:0;"></div>
     <div class="room-card-top">
-      <span class="room-badge ${room.live?'live':''}">${room.live? '🔴 LIVE' : '⏸ OFFLINE'}</span>
+      <span class="room-badge ${room.live?'live':''}">${room.live? '<span class="live-dot"></span>LIVE' : ic('pause')+'OFFLINE'}</span>
       <span class="room-cat">${escapeHTML(room.category)}</span>
     </div>
     <div class="room-name">${escapeHTML(room.name)}</div>
@@ -372,8 +384,10 @@ function renderRecommended(){
   document.getElementById('recommended-rooms').innerHTML = rooms.length ? rooms.map(discoverRowHTML).join('') : emptyStateHTML('✨','Nothing here yet','Follow more people to get better recommendations.');
 }
 
+const EMPTY_ICONS = {'🔍':'search','✨':'sparkles','👥':'users','📭':'inbox','💤':'moon','🪙':'coins','🧾':'receipt','⚠️':'triangle-alert','💬':'message-circle','🔔':'bell','🙌':'hand','⏳':'hourglass'};
 function emptyStateHTML(emoji, title, sub){
-  return `<div class="empty-state"><div class="emoji">${emoji}</div><h3>${title}</h3><p>${sub}</p></div>`;
+  const glyph = EMPTY_ICONS[emoji] ? ic(EMPTY_ICONS[emoji]) : emoji;
+  return `<div class="empty-state"><div class="emoji">${glyph}</div><h3>${title}</h3><p>${sub}</p></div>`;
 }
 
 function renderHome(){
@@ -751,16 +765,16 @@ function currentSeats(){
 
 function seatHTML(p, idx){
   if(p.empty){
-    return `<div class="mic-seat empty ${p.locked?'locked':''}" data-seat-idx="${idx}"><div class="avatar-frame">${p.locked?'🔒':'＋'}</div><span class="uname">${p.locked?'Locked':'Empty seat'}</span></div>`;
+    return `<div class="mic-seat empty ${p.locked?'locked':''}" data-seat-idx="${idx}"><div class="avatar-frame">${p.locked?ic('lock'):ic('plus')}</div><span class="uname">${p.locked?'Locked':'Empty seat'}</span></div>`;
   }
   const crown = p.giftsReceived && p.giftsReceived === Math.max(...currentSeats().filter(s=>!s.empty).map(s=>s.giftsReceived||0)) && p.giftsReceived>0
-    ? `<span class="seat-crown">👑</span>` : '';
+    ? `<span class="seat-crown">${ic('crown')}</span>` : '';
   return `<div class="mic-seat ${p.muted?'muted':'speaking'} ${p.requesting?'requesting':''}" data-seat-idx="${idx}">
       ${crown}
       <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${p.level?`<span class="seat-level">Lv ${escapeHTML(p.level)}</span>`:''}</div>
       <span class="uname">${p.isMe? 'You' : escapeHTML(p.name)}</span>
-      <span class="mic-status">${p.muted?'🔇':'🎙️'}</span>
-      ${p.giftsReceived?`<span class="seat-gift-pill">🪙×${p.giftsReceived}</span>`:''}
+      <span class="mic-status">${p.muted?ic('mic-off'):ic('mic')}</span>
+      ${p.giftsReceived?`<span class="seat-gift-pill">${ic('coins')}×${p.giftsReceived}</span>`:''}
     </div>`;
 }
 
@@ -793,13 +807,13 @@ function openSeatProfile(idx){
   document.getElementById('seat-profile-avatar').src = safeImgUrl(seat.avatar);
   document.getElementById('seat-profile-name').textContent = seat.isMe ? (STATE.currentUser?STATE.currentUser.name:'You') : seat.name;
   document.getElementById('seat-profile-level').textContent = seat.level ? `Lv ${seat.level}` : 'Lv —';
-  document.getElementById('seat-profile-sub').textContent = seat.muted ? '🔇 Muted on mic' : '🎙️ Speaking';
+  document.getElementById('seat-profile-sub').innerHTML = seat.muted ? ic('mic-off') + ' Muted on mic' : ic('mic') + ' Speaking';
 
   const actions = [];
   if(seat.isMe){
     actions.push(`<button class="btn btn-glass full" data-seat-action="leave-seat">Step down from mic</button>`);
   } else {
-    actions.push(`<button class="btn btn-primary" data-seat-action="gift" data-seat-idx="${idx}">🎁 Send Gift</button>`);
+    actions.push(`<button class="btn btn-primary" data-seat-action="gift" data-seat-idx="${idx}">${ic('gift')} Send Gift</button>`);
     if(seat.srcUserId){
       actions.push(`<button class="btn btn-glass" data-seat-action="profile" data-seat-idx="${idx}">View Profile</button>`);
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
@@ -807,8 +821,8 @@ function openSeatProfile(idx){
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
     }  // real mode: no DM backend yet, so no dead "Message" button
     if(STATE.isHost){
-      actions.push(`<button class="btn btn-glass" data-seat-action="force-mute" data-seat-idx="${idx}">🔇 ${seat.muted ? 'Unmute' : 'Mute speaker'}</button>`);
-      actions.push(`<button class="btn btn-glass" data-seat-action="lock-seat" data-seat-idx="${idx}">🔒 ${seat.locked ? 'Unlock seat' : 'Lock seat'}</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="force-mute" data-seat-idx="${idx}">${ic(seat.muted ? 'mic' : 'mic-off')} ${seat.muted ? 'Unmute' : 'Mute speaker'}</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="lock-seat" data-seat-idx="${idx}">${ic(seat.locked ? 'lock-open' : 'lock')} ${seat.locked ? 'Unlock seat' : 'Lock seat'}</button>`);
       actions.push(`<button class="btn btn-danger full" data-seat-action="remove" data-seat-idx="${idx}">Remove from mic</button>`);
     }
   }
@@ -911,7 +925,7 @@ function updateHandButtonUI(){
   let badge = btn.querySelector('.vc-badge');
   if(STATE.isHost){
     label.textContent = 'Requests';
-    btn.querySelector('.ic').textContent = '🙋';
+    btn.querySelector('.ic').innerHTML = ic('clipboard-list');
     btn.classList.remove('hand-active');
     if(STATE.handQueue.length){
       if(!badge){ badge = document.createElement('span'); badge.className='vc-badge'; btn.appendChild(badge); }
@@ -919,7 +933,7 @@ function updateHandButtonUI(){
     } else if(badge){ badge.remove(); }
   } else {
     label.textContent = STATE.handRaised ? 'Raised' : 'Raise';
-    btn.querySelector('.ic').textContent = '✋';
+    btn.querySelector('.ic').innerHTML = ic('hand');
     btn.classList.toggle('hand-active', STATE.handRaised);
     if(badge) badge.remove();
   }
@@ -957,8 +971,8 @@ function renderRequestsModal(){
       <img class="avatar" src="${imgSrc(r.avatar)}">
       <div class="meta">${escapeHTML(r.name)}<span>wants to join the mic</span></div>
       <div class="r-actions">
-        <button class="r-approve" data-approve-req="${i}">✓</button>
-        <button class="r-decline" data-decline-req="${i}">✕</button>
+        <button class="r-approve" data-approve-req="${i}">${ic('check')}</button>
+        <button class="r-decline" data-decline-req="${i}">${ic('x')}</button>
       </div>
     </div>`).join('');
 }
@@ -1037,7 +1051,7 @@ function chatMessageHTML(m){
   const avatar = m.avatarUrl || (isMe ? (m._seatAvatar || (STATE.currentUser?STATE.currentUser.avatar:'')) : (DATA.getUser(m.who)||STATE.currentUser).avatar);
   const time = m.time || nowTime();
   const giftClass = m.gift ? 'gift' : '';
-  const replyBlock = m.replyTo ? `<div class="msg-reply-quote">↩ ${escapeHTML(m.replyTo.name)}: ${escapeHTML(m.replyTo.text.slice(0,60))}</div>` : '';
+  const replyBlock = m.replyTo ? `<div class="msg-reply-quote">${ic('corner-up-left')} ${escapeHTML(m.replyTo.name)}: ${escapeHTML(m.replyTo.text.slice(0,60))}</div>` : '';
   return `<div class="msg ${giftClass}" data-msg-name="${escapeAttr(displayName.split(' ')[0])}" data-msg-text="${escapeAttr(m.text)}">
     <img class="avatar" src="${imgSrc(avatar)}">
     <div class="msg-body">
@@ -1112,10 +1126,10 @@ function sendMessage(){
 function updateVoiceControlUI(){
   const micBtn = document.getElementById('vc-mic');
   micBtn.classList.toggle('off', !micOn);
-  micBtn.querySelector('.ic').textContent = micOn ? '🎤' : '🔇';
+  micBtn.querySelector('.ic').innerHTML = ic(micOn ? 'mic' : 'mic-off');
   const spBtn = document.getElementById('vc-speaker');
   spBtn.classList.toggle('off', !speakerOn);
-  spBtn.querySelector('.ic').textContent = speakerOn ? '🔊' : '🔈';
+  spBtn.querySelector('.ic').innerHTML = ic(speakerOn ? 'volume-2' : 'volume-x');
 }
 function toggleMicrophone(){
   micOn = !micOn;
@@ -1240,17 +1254,17 @@ function renderEmojiPicker(pickerId, inputId){
 function renderRoomMoreSheet(){
   const list = document.getElementById('room-more-list');
   const rows = [];
-  rows.push(`<div class="sheet-action-row" data-more-action="share"><div class="ic">🔗</div>Share room</div>`);
+  rows.push(`<div class="sheet-action-row" data-more-action="share"><div class="ic">${ic('share-2')}</div>Share room</div>`);
   if(STATE.isHost){
-    rows.push(`<div class="sheet-action-row" data-more-action="mute-all"><div class="ic">🔇</div>Mute everyone on mic</div>`);
-    rows.push(`<div class="sheet-action-row" data-more-action="lock-seats"><div class="ic">${STATE.seatsLocked?'🔓':'🔒'}</div>${STATE.seatsLocked?'Unlock seats':'Lock seats'}</div>`);
-    rows.push(`<div class="sheet-action-row" data-more-action="settings"><div class="ic">⚙️</div>Room settings</div>`);
-    rows.push(`<div class="sheet-action-row danger" data-more-action="end-room"><div class="ic">🛑</div>End room for everyone</div>`);
+    rows.push(`<div class="sheet-action-row" data-more-action="mute-all"><div class="ic">${ic('mic-off')}</div>Mute everyone on mic</div>`);
+    rows.push(`<div class="sheet-action-row" data-more-action="lock-seats"><div class="ic">${ic(STATE.seatsLocked?'lock-open':'lock')}</div>${STATE.seatsLocked?'Unlock seats':'Lock seats'}</div>`);
+    rows.push(`<div class="sheet-action-row" data-more-action="settings"><div class="ic">${ic('settings')}</div>Room settings</div>`);
+    rows.push(`<div class="sheet-action-row danger" data-more-action="end-room"><div class="ic">${ic('octagon-x')}</div>End room for everyone</div>`);
   } else {
-    rows.push(`<div class="sheet-action-row" data-more-action="report"><div class="ic">🚩</div>Report room</div>`);
-    rows.push(`<div class="sheet-action-row danger" data-more-action="block"><div class="ic">🚫</div>Block host</div>`);
+    rows.push(`<div class="sheet-action-row" data-more-action="report"><div class="ic">${ic('flag')}</div>Report room</div>`);
+    rows.push(`<div class="sheet-action-row danger" data-more-action="block"><div class="ic">${ic('ban')}</div>Block host</div>`);
   }
-  rows.push(`<div class="sheet-action-row danger" data-more-action="leave"><div class="ic">✕</div>Leave room</div>`);
+  rows.push(`<div class="sheet-action-row danger" data-more-action="leave"><div class="ic">${ic('log-out')}</div>Leave room</div>`);
   list.innerHTML = rows.join('');
 }
 function handleRoomMoreAction(action){
@@ -1279,7 +1293,7 @@ function renderGiftGrid(){
     <div class="gift-item" data-gift-id="${g.id}">
       <span class="emoji">${g.emoji}</span>
       <span class="gname">${g.name}</span>
-      <span class="gcost">🪙 ${g.cost}</span>
+      <span class="gcost">${ic('coins')} ${g.cost}</span>
     </div>`).join('');
 }
 function openGiftModal(recipient, seatIdx){
@@ -1395,7 +1409,7 @@ function renderPackages(){
   }
   document.getElementById('package-grid').innerHTML = DATA.packages.map(p=>`
     <div class="package-card glass ${p.best?'best':''}" data-package-id="${p.id}">
-      <div class="coins">🪙 ${p.coins.toLocaleString()}</div>
+      <div class="coins">${ic('coins')} ${p.coins.toLocaleString()}</div>
       <div class="price">₹${p.price}</div>
       <button class="btn btn-glass btn-sm btn-block" data-buy-package="${p.id}">Buy</button>
     </div>`).join('');
@@ -1407,7 +1421,7 @@ async function renderTxHistory(){
     try{
       const rows = await Api.listTransactions();
       listEl.innerHTML = rows.map(t=>{
-        const icon = t.type==='gift_received'?'🎁':t.type==='purchase'?'💳':t.type==='gift_sent'?'📤':'🪙';
+        const icon = ic(t.type==='gift_received'?'gift':t.type==='purchase'?'credit-card':t.type==='gift_sent'?'arrow-up-right':'coins');
         const when = new Date(t.created_at).toLocaleString([], {dateStyle:'medium', timeStyle:'short'});
         return `<div class="tx-row">
           <div class="tx-info"><span class="tx-icon glass">${icon}</span>
@@ -1423,7 +1437,7 @@ async function renderTxHistory(){
   }
   const tx = Storage.get(Storage.KEYS.TX, []);
   listEl.innerHTML = tx.map(t=>{
-    const icon = t.type==='received'?'🎁':t.type==='purchase'?'💳':'📤';
+    const icon = ic(t.type==='received'?'gift':t.type==='purchase'?'credit-card':'arrow-up-right');
     return `<div class="tx-row">
       <div class="tx-info"><span class="tx-icon glass">${icon}</span>
         <div class="tx-meta"><div class="t">${escapeHTML(t.label)}</div><div class="d">${escapeHTML(t.time)}</div></div>
@@ -1479,7 +1493,7 @@ function toggleFollow(userId){
 
 function profileHTML(user, isSelf){
   const following = isFollowing(user.id);
-  const badges = ['🏆 Top Host','🎤 Verified Voice','🔥 30-Day Streak'];
+  const badges = [ic('trophy')+' Top Host', ic('mic')+' Verified Voice', ic('flame')+' 30-Day Streak'];
   return `
     <div class="profile-cover" style="background:${DATA.gradients[user.level % DATA.gradients.length]};"></div>
     <div class="profile-main">
@@ -1487,7 +1501,7 @@ function profileHTML(user, isSelf){
       <div class="profile-name-row"><h2>${escapeHTML(user.name)}</h2><span class="level-badge">Lvl ${escapeHTML(user.level)}</span></div>
       <div class="profile-username">@${escapeHTML(user.username)}</div>
       <div class="profile-bio">${escapeHTML(user.bio)}</div>
-      <div class="profile-country">📍 ${escapeHTML(user.country)}</div>
+      <div class="profile-country">${ic('map-pin')} ${escapeHTML(user.country)}</div>
       <div class="profile-stats">
         <div class="stat"><b>${user.followers.toLocaleString()}</b><span>Followers</span></div>
         <div class="stat"><b>${user.following.toLocaleString()}</b><span>Following</span></div>
@@ -1497,7 +1511,7 @@ function profileHTML(user, isSelf){
         ${isSelf ? `<button class="btn btn-glass" style="flex:1;" data-open-settings>Edit Profile</button>`
         : `<button class="btn ${following?'btn-glass':'btn-primary'}" style="flex:1;" data-follow="${user.id}">${following?'Following':'Follow'}</button>
            <button class="btn btn-glass" style="flex:1;" data-dm-user="${user.id}">Message</button>
-           <button class="btn btn-glass" data-gift-user="${user.id}" style="flex:0.6;">🎁</button>`}
+           <button class="btn btn-glass" data-gift-user="${user.id}" style="flex:0.6;" aria-label="Send gift">${ic('gift')}</button>`}
       </div>
     </div>
     <div class="badge-row">${badges.map(b=>`<div class="badge-pill">${b}</div>`).join('')}</div>
@@ -1515,7 +1529,7 @@ function profileHTML(user, isSelf){
       </div>
     </div>
     <div class="tab-panel" data-panel="achievements">
-      ${[['🏅','First Room Joined','Joined your first Vibra room'],['🎙️','Voice Star','Spoke in 10+ voice rooms'],['💎','Big Spender','Sent over 1,000 coins in gifts'],['🌟','Rising Star','Reached level 10']].map(a=>`
+      ${[[ic('medal'),'First Room Joined','Joined your first Vibra room'],[ic('mic'),'Voice Star','Spoke in 10+ voice rooms'],[ic('gem'),'Big Spender','Sent over 1,000 coins in gifts'],[ic('star'),'Rising Star','Reached level 10']].map(a=>`
       <div class="achieve-row"><div class="ic">${a[0]}</div><div><div class="t">${a[1]}</div><div class="d">${a[2]}</div></div></div>`).join('')}
     </div>
   `;
@@ -1621,11 +1635,11 @@ function sendDM(){
 /* ---------------------------- NOTIFICATIONS -------------------------------- */
 function notifIconMeta(type){
   switch(type){
-    case 'follow': return {ic:'👤', bg:'rgba(183,33,255,0.15)'};
-    case 'gift': return {ic:'🎁', bg:'rgba(255,200,87,0.15)'};
-    case 'invite': return {ic:'📣', bg:'rgba(47,230,216,0.15)'};
-    case 'message': return {ic:'💬', bg:'rgba(255,62,165,0.15)'};
-    default: return {ic:'🔔', bg:'rgba(255,255,255,0.08)'};
+    case 'follow': return {ic:ic('user-plus'), bg:'rgba(183,33,255,0.15)'};
+    case 'gift': return {ic:ic('gift'), bg:'rgba(255,200,87,0.15)'};
+    case 'invite': return {ic:ic('megaphone'), bg:'rgba(47,230,216,0.15)'};
+    case 'message': return {ic:ic('message-circle'), bg:'rgba(255,62,165,0.15)'};
+    default: return {ic:ic('bell'), bg:'rgba(255,255,255,0.08)'};
   }
 }
 function renderNotifications(){
@@ -1703,7 +1717,7 @@ function bindPasswordToggles(){
     btn.addEventListener('click', ()=>{
       const input = document.getElementById(btn.dataset.target);
       input.type = input.type === 'password' ? 'text' : 'password';
-      btn.textContent = input.type === 'password' ? '👁️' : '🙈';
+      btn.innerHTML = ic(input.type === 'password' ? 'eye' : 'eye-off');
     });
   });
 }
@@ -2052,8 +2066,8 @@ function bindRoomScreen(){
       const idx = currentSeats().indexOf(p);
       return `<div class="discover-row">
         <img class="thumb avatar" style="border-radius:50%;" src="${imgSrc(p.avatar)}">
-        <div class="meta"><div class="name">${p.isMe?'You':escapeHTML(p.name)}</div><div class="sub">${p.muted?'Muted':'Speaking'}${p.giftsReceived?` · 🪙${p.giftsReceived} received`:''}</div></div>
-        ${!p.isMe?`<button class="join-mini btn-glass" data-participant-gift="${idx}">🎁</button>`:''}
+        <div class="meta"><div class="name">${p.isMe?'You':escapeHTML(p.name)}</div><div class="sub">${p.muted?'Muted':'Speaking'}${p.giftsReceived?` · ${ic('coins')}${p.giftsReceived} received`:''}</div></div>
+        ${!p.isMe?`<button class="join-mini btn-glass" data-participant-gift="${idx}" aria-label="Send gift">${ic('gift')}</button>`:''}
       </div>`;
     }).join('') : emptyStateHTML('👥','Nobody on mic yet','Tap an empty seat to hop on!');
     openModal('participants-modal');
