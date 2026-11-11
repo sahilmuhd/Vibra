@@ -192,7 +192,7 @@ class FollowView(APIView):
         target = _target_user(user_id)
         if target.id == request.user.id:
             return Response({"detail": "You cannot follow yourself."}, status=status.HTTP_400_BAD_REQUEST)
-        if Block.objects.filter(blocker=target, blocked=request.user).exists():
+        if Block.between(request.user.id, target.id):
             return Response({"detail": "You cannot follow this user."}, status=status.HTTP_403_FORBIDDEN)
         _, created = Follow.objects.get_or_create(follower=request.user, following=target)
         if created:

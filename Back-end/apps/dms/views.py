@@ -18,12 +18,6 @@ from .services import conversations_for, get_conversation
 User = get_user_model()
 
 
-def _blocked_between(a_id, b_id):
-    return Block.objects.filter(
-        Q(blocker_id=a_id, blocked_id=b_id) | Q(blocker_id=b_id, blocked_id=a_id)
-    ).exists()
-
-
 class ConversationListView(APIView):
     """The caller's threads, newest activity first, with last message and unread count."""
     permission_classes = [permissions.IsAuthenticated]
@@ -76,7 +70,7 @@ class ThreadView(APIView):
             messages = list(convo.messages.order_by("-created_at", "-id")[:100])[::-1]
         return Response({
             "user": PublicUserSerializer(other).data,
-            "blocked": _blocked_between(request.user.id, other.id),
+            "blocked": Block.between(request.user.id, other.id),
             "messages": DirectMessageSerializer(messages, many=True).data,
         })
 
@@ -84,7 +78,7 @@ class ThreadView(APIView):
         other = get_object_or_404(User, id=user_id)
         if other.id == request.user.id:
             return Response({"detail": "You cannot message yourself."}, status=status.HTTP_400_BAD_REQUEST)
-        if _blocked_between(request.user.id, other.id):
+        if Block.between(request.user.id, other.id):
             raise PermissionDenied("You can't message this person.")
         serializer = DirectMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

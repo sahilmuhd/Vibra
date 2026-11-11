@@ -20,10 +20,12 @@ Razorpay/LiveKit credentials to actually run end-to-end.
 
 ```
 config/            settings, urls, asgi (HTTP + WebSocket), routing, JWT ws auth
-apps/accounts/      signup, guest login, profile
-apps/rooms/         rooms, seats, messages, hand-raise, Channels consumer, voice tokens
+apps/accounts/      signup, guest login, profiles, follows, blocks
+apps/rooms/         rooms, seats, chat, hand-raise, moderators, reports, Channels
+                    consumers (/ws/rooms/<id>/ and /ws/me/), voice tokens + LiveKit sync
 apps/wallet/        coin ledger, Razorpay order + webhook, gift sending
-apps/notifications/ notification model (extend with follow/gift/mention triggers)
+apps/notifications/ in-app notifications (follow, gift, followed host went live)
+apps/dms/           one-to-one direct messages
 ```
 
 ## Running locally
@@ -55,12 +57,10 @@ Connect a WebSocket client to `ws://localhost:8000/ws/rooms/<id>/?token=<jwt acc
 ## What's intentionally NOT done yet (next steps)
 
 - Mobile push notifications (in-app notifications and DMs are live over `/ws/me/`)
-- Per-endpoint throttles beyond the auth scope (e.g. messages should be much lower than `300/min`)
+- Real pagination for the room list (currently capped at the newest 100 live rooms)
 - Admin-side content moderation / profanity filtering on `Message.text`
-- `livekit-api` was pinned at `0.7.1` in requirements.txt but the latest
-  available (1.2.0 at time of writing) was used to verify the token code —
-  double check `AccessToken`/`VideoGrants` method signatures against
-  whichever version you actually install.
+- `livekit-api` 0.7.1 has no `async with` support for `LiveKitAPI`;
+  `apps/rooms/voice_admin.py` closes the session explicitly. Revisit when upgrading.
 
 ## Testing
 

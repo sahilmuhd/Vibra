@@ -52,6 +52,13 @@ class Block(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @classmethod
+    def between(cls, a_id, b_id) -> bool:
+        """True if either user has blocked the other."""
+        return cls.objects.filter(
+            models.Q(blocker_id=a_id, blocked_id=b_id) | models.Q(blocker_id=b_id, blocked_id=a_id)
+        ).exists()
+
     class Meta:
         unique_together = ("blocker", "blocked")
         constraints = [

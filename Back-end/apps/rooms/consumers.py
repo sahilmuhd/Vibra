@@ -5,7 +5,8 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.utils import timezone
 
-from .models import Room, RoomBan, RoomParticipant
+from .models import Room, RoomParticipant
+from .services import may_listen
 
 HEARTBEAT_SECONDS = 60
 MIN_TICK_INTERVAL = 0.1       # speaking_tick: at most ~10/s per connection
@@ -158,14 +159,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     @staticmethod
     async def may_listen(room_id, user):
         def check():
-            if user.is_staff:
-                return True
-            if RoomBan.objects.filter(room_id=room_id, user=user).exists():
-                return False
-            return (
-                Room.objects.filter(id=room_id, host=user).exists()
-                or RoomParticipant.objects.filter(room_id=room_id, user=user).exists()
-            )
+            room = Room.objects.filter(id=room_id).first()
+            return room is not None and may_listen(room, user)
         return await sync_to_async(check)()
 
     async def touch(self):

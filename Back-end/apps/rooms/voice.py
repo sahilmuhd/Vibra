@@ -10,8 +10,8 @@ from rest_framework.views import APIView
 
 from apps.accounts.profiles import ensure_profile
 
-from .models import Room, RoomBan
-from .services import user_in_room
+from .models import Room
+from .services import is_host_muted, shut_out, user_in_room
 
 TOKEN_TTL = timedelta(hours=1)
 
@@ -28,7 +28,7 @@ class VoiceTokenView(APIView):
         room = get_object_or_404(Room, id=room_id)
         if not room.is_live:
             return Response({"detail": "This room has ended."}, status=status.HTTP_410_GONE)
-        if RoomBan.objects.filter(room=room, user=request.user).exists():
+        if shut_out(room, request.user.id):
             raise PermissionDenied("You have been removed from this room.")
         if not user_in_room(room, request.user):
             raise PermissionDenied("Join the room first.")
@@ -41,7 +41,7 @@ class VoiceTokenView(APIView):
         ).with_ttl(TOKEN_TTL)
         # Only seated users can publish audio, and never while the host has
         # them muted. Self-mute is still applied client-side from `is_muted`.
-        can_publish = seat is not None and not seat.muted_by_host
+        can_publish = seat is not None and not is_host_muted(room, request.user.id)
         token = token.with_grants(
             api.VideoGrants(
                 room_join=True,

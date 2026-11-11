@@ -288,7 +288,7 @@ function enterApp(){
   document.getElementById('home-greeting').innerHTML = `${escapeHTML(g)}, ${escapeHTML(u.name.split(' ')[0])}<span>Welcome back to Vibra</span>`;
   if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; document.getElementById('desktop-right').style.display='block'; }
   const nb = document.getElementById('notif-badge');
-  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); } // static "3" in the markup is demo data
+  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); loadBlocks(); } // static "3" in the markup is demo data
   refreshWallet();
   renderHome();
   navigateTo('home'); // also refreshes the room list from the server
@@ -659,6 +659,7 @@ function connectRoomSocket(roomId){
     STATE.roomSocket = Api.connectRoomSocket(roomId, (event) => {
       if(!STATE.activeRoom || STATE.activeRoom.id !== roomId) return; // stale event after leaving
       if(event.event === 'message_new'){
+        if(event.user && isBlocked(event.user.id)) return;
         const box = document.getElementById('chat-messages');
         const mine = event.user && event.user.username === (STATE.currentUser && STATE.currentUser.username);
         box.insertAdjacentHTML('beforeend', chatMessageHTML({
@@ -960,15 +961,17 @@ function requestSeat(idx){
   if(isApiRoom){
     seat.requesting = true;
     renderMicGrid();
-    Api.takeSeat(STATE.activeRoom.id, idx).then(async ()=>{
+    Api.takeSeat(STATE.activeRoom.id, idx).then(async (res)=>{
+      const hostMuted = !!(res && res.muted_by_host);
       Object.assign(seat, {
         empty:false, requesting:false, isMe:true, name: STATE.currentUser.name,
         level: STATE.currentUser.level || 1, avatar: STATE.currentUser.avatar,
-        muted:false, speaking:false, giftsReceived:0,
+        muted: hostMuted, speaking:false, giftsReceived:0, userId: STATE.currentUser.id,
       });
       STATE.mySeatIndex = idx;
-      micOn = true; updateVoiceControlUI();
+      micOn = !hostMuted; updateVoiceControlUI();
       renderMicGrid();
+      if(hostMuted){ showToast('You took a seat, but the host has muted you', 'info'); return; }
       showToast("You're live! Say hi 👋", 'success');
       if(STATE.liveKitRoom){
         try{ await STATE.liveKitRoom.localParticipant.setMicrophoneEnabled(true); }
@@ -2015,17 +2018,30 @@ function onUserEvent(event){
   }
 }
 
+function badgeText(count){ return count > 99 ? '99+' : String(count); }
+// Real mode only: fetch an unread count and hand it to a badge setter.
+function refreshUnread(fetchCount, setBadge){
+  if(VIBRA_CONFIG.DEMO_DATA || !STATE.currentUser) return;
+  fetchCount().then(r => setBadge(r.unread || 0)).catch(()=>{});
+}
 function setDMBadge(count){
   document.querySelectorAll('[data-nav="messages"]').forEach(el => {
     let b = el.querySelector('.nav-badge');
     if(!b){ b = document.createElement('span'); b.className = 'nav-badge'; el.appendChild(b); }
-    b.textContent = count > 99 ? '99+' : String(count);
+    b.textContent = badgeText(count);
     b.classList.toggle('show', count > 0);
   });
 }
-function refreshDMBadge(){
+function refreshDMBadge(){ refreshUnread(() => Api.unreadDMCount(), setDMBadge); }
+
+// Users I've blocked: their live room messages are dropped client-side too
+// (the server already filters the message history).
+const blockedIds = new Set();
+function isBlocked(userId){ return blockedIds.has(userId); }
+function rememberBlock(userId, blocked){ blocked ? blockedIds.add(userId) : blockedIds.delete(userId); }
+function loadBlocks(){
   if(VIBRA_CONFIG.DEMO_DATA || !STATE.currentUser) return;
-  Api.unreadDMCount().then(r => setDMBadge(r.unread || 0)).catch(()=>{});
+  Api.listBlocks().then(users => { blockedIds.clear(); users.forEach(u => blockedIds.add(u.id)); }).catch(()=>{});
 }
 
 /* ---------------------------- REAL PROFILES ------------------------------- */
@@ -2093,6 +2109,7 @@ function bindApiProfileActions(){
       const id = Number(block.dataset.apiBlock);
       const blocked = !!block.dataset.blocked;
       (blocked ? Api.unblockUser(id) : Api.blockUser(id)).then(() => {
+        rememberBlock(id, !blocked);
         block.dataset.blocked = blocked ? '' : '1';
         block.innerHTML = `${ic('ban')} ${blocked ? 'Block' : 'Unblock'}`;
         showToast(blocked ? `Unblocked ${block.dataset.username}` : `Blocked ${block.dataset.username}`, 'success');
@@ -2116,14 +2133,11 @@ function bindApiProfileActions(){
 function setNotifBadge(count){
   const nb = document.getElementById('notif-badge');
   if(!nb) return;
-  nb.textContent = count > 99 ? '99+' : String(count);
+  nb.textContent = badgeText(count);
   nb.style.display = count > 0 ? 'flex' : 'none';
 }
 let notifPollTimer = null;
-function refreshNotifBadge(){
-  if(VIBRA_CONFIG.DEMO_DATA || !STATE.currentUser) return;
-  Api.unreadNotificationCount().then(r => setNotifBadge(r.unread || 0)).catch(()=>{});
-}
+function refreshNotifBadge(){ refreshUnread(() => Api.unreadNotificationCount(), setNotifBadge); }
 function startNotifPolling(){
   clearInterval(notifPollTimer);
   refreshNotifBadge();
@@ -2408,7 +2422,7 @@ function bindDiscover(){
 
 function bindRoomScreen(){
   document.getElementById('room-back').addEventListener('click', leaveRoom);
-  document.getElementById('room-share').addEventListener('click', ()=> showToast('Room link copied to clipboard', 'success'));
+  document.getElementById('room-share').addEventListener('click', ()=> VIBRA_CONFIG.DEMO_DATA ? showToast('Room link copied to clipboard', 'success') : shareRoom());
   document.getElementById('room-more').addEventListener('click', ()=>{
     renderRoomMoreSheet();
     openModal('room-more-modal');
@@ -2545,6 +2559,7 @@ function bindRoomScreen(){
       const seat = currentSeats()[idx];
       if(!seat || !seat.userId) return;
       Api.blockUser(seat.userId).then(() => {
+        rememberBlock(seat.userId, true);
         closeModal('seat-profile-modal');
         showToast(`${seat.name} blocked — you won't see their messages`, 'success');
       }).catch(e => showToast(e.message || 'Could not block user', 'error'));

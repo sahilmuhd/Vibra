@@ -249,6 +249,10 @@ const Api = {
     return this.request(`/auth/users/${userId}/block/`, { method: "DELETE" });
   },
 
+  async listBlocks() {
+    return this.request(`/auth/blocks/`);
+  },
+
   // ---- social ----
   async getProfile(username) {
     return this.request(`/auth/users/${encodeURIComponent(username)}/`);

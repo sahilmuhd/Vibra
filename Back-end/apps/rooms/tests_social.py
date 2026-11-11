@@ -165,3 +165,78 @@ class ProfileLiveRoomTests(RoomBase):
         self.assertIsNone(self.alice_c.get("/api/auth/users/hosty/").data["live_room"])
         rid = self.create_room(name="Late Talk").data["id"]
         self.assertEqual(self.alice_c.get("/api/auth/users/hosty/").data["live_room"], {"id": rid, "name": "Late Talk"})
+
+
+class ReviewFixTests(RoomBase):
+    """Regressions from the spec review."""
+
+    def setUp(self):
+        super().setUp()
+        self.rid = self.create_room().data["id"]
+        self.alice_c.post(f"/api/rooms/{self.rid}/join/")
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/take/")
+
+    def seat(self, pos):
+        return Seat.objects.get(room_id=self.rid, position=pos)
+
+    def test_host_mute_survives_changing_seats_and_rejoining(self):
+        self.host_c.post(f"/api/rooms/{self.rid}/seats/1/force-mute/")
+        res = self.alice_c.post(f"/api/rooms/{self.rid}/seats/2/take/")
+        self.assertEqual(res.data, {"is_muted": True, "muted_by_host": True})
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/seats/2/mute/").status_code, 403)
+
+        self.alice_c.post(f"/api/rooms/{self.rid}/leave/")
+        self.alice_c.post(f"/api/rooms/{self.rid}/join/")
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/3/take/")
+        self.assertTrue(self.seat(3).muted_by_host)
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/seats/3/mute/").status_code, 403)
+
+        self.host_c.post(f"/api/rooms/{self.rid}/seats/3/force-mute/", {"muted": False}, format="json")
+        self.assertEqual(self.alice_c.post(f"/api/rooms/{self.rid}/seats/3/mute/").data, {"is_muted": False})
+
+    def test_taking_a_seat_requires_joining_first(self):
+        self.assertEqual(self.bob_c.post(f"/api/rooms/{self.rid}/seats/4/take/").status_code, 403)
+        self.assertIsNone(self.seat(4).user)
+
+    def test_user_blocked_by_host_cannot_take_seat(self):
+        self.bob_c.post(f"/api/rooms/{self.rid}/join/")
+        Block.objects.create(blocker=self.host, blocked=self.bob)
+        self.assertEqual(self.bob_c.post(f"/api/rooms/{self.rid}/seats/4/take/").status_code, 403)
+
+    def test_moderator_cannot_mute_or_evict_another_moderator(self):
+        self.bob_c.post(f"/api/rooms/{self.rid}/join/")
+        for u in (self.alice, self.bob):
+            RoomModerator.objects.create(room_id=self.rid, user=u)
+        self.assertEqual(self.bob_c.post(f"/api/rooms/{self.rid}/seats/1/force-mute/").status_code, 403)
+        self.assertEqual(self.bob_c.post(f"/api/rooms/{self.rid}/seats/1/lock/").status_code, 403)
+        self.assertEqual(self.seat(1).user, self.alice)
+        self.assertFalse(self.seat(1).is_locked)  # the failed lock rolled back
+
+    def test_cleanup_closes_voice_session_of_ended_room(self):
+        from datetime import timedelta
+        from unittest import mock
+
+        from django.core.management import call_command
+        from django.utils import timezone
+
+        from .models import Room, RoomParticipant
+
+        RoomParticipant.objects.filter(room_id=self.rid).delete()
+        Room.objects.filter(id=self.rid).update(created_at=timezone.now() - timedelta(minutes=30))
+        with mock.patch("apps.rooms.management.commands.cleanup_stale_rooms.voice_admin") as va:
+            call_command("cleanup_stale_rooms")
+        va.close_room.assert_called_once()
+
+
+class SocketRevocationTests(RoomBase):
+    def test_password_change_revokes_socket_tokens(self):
+        from asgiref.sync import async_to_sync
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from config.jwt_auth_middleware import get_user_from_token
+
+        token = str(RefreshToken.for_user(self.alice).access_token)
+        self.assertEqual(async_to_sync(get_user_from_token)(token), self.alice)
+        self.alice.set_password("An0ther-Strong-Pass!")
+        self.alice.save()
+        self.assertFalse(async_to_sync(get_user_from_token)(token).is_authenticated)

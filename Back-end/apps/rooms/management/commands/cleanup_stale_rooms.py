@@ -7,7 +7,7 @@ from django.utils import timezone
 from apps.rooms import voice_admin
 from apps.rooms.models import HandRaise, Room, RoomParticipant, Seat
 from apps.rooms.realtime import broadcast_to_room
-from apps.rooms.services import remove_user_from_room
+from apps.rooms.services import remove_user_from_room, vacate_all
 
 
 class Command(BaseCommand):
@@ -50,9 +50,10 @@ class Command(BaseCommand):
             with transaction.atomic():
                 room.is_live = False
                 room.save(update_fields=["is_live"])
-                Seat.objects.filter(room=room).update(user=None, is_muted=True, muted_by_host=False)
+                vacate_all(Seat.objects.filter(room=room))
                 HandRaise.objects.filter(room=room).delete()
             broadcast_to_room(room.id, "room.ended", {"room_id": room.id})
+            voice_admin.close_room(room)
             ended += 1
 
         self.stdout.write(f"dropped {dropped} stale participants, ended {ended} empty rooms")

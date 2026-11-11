@@ -114,6 +114,17 @@ class GiftEvent(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class RoomMute(models.Model):
+    """A standing host/moderator mute on one person in one room. Kept apart
+    from the seat so taking another seat or rejoining cannot clear it."""
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="mutes")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("room", "user")
+
+
 class RoomModerator(models.Model):
     """Trusted helpers the host appoints. They can mute, lock seats and kick
     ordinary participants, but cannot end the room or act on the host/other mods."""
