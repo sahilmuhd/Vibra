@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "apps.rooms",
     "apps.wallet",
     "apps.notifications",
+    "apps.dms",
 ]
 
 MIDDLEWARE = [

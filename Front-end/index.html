@@ -1016,6 +1016,18 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   .room-grid{ grid-template-columns:1fr 1fr 1fr; }
 }
 
+/* ---- Nav badge (unread DMs) ---- */
+.nav-item, .side-link{ position:relative; }
+.nav-badge{ position:absolute; top:-2px; left:calc(50% + 6px); min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--accent-2); color:#fff; font-size:10px; font-weight:700; display:none; align-items:center; justify-content:center; }
+.side-link .nav-badge{ position:static; margin-left:auto; }
+.nav-badge.show{ display:flex; }
+
+/* ---- Real profile extras ---- */
+.live-now-pill{ display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:var(--radius-pill); background:rgba(255,77,109,0.14); border:1px solid rgba(255,77,109,0.35); color:#ffd0d8; font-size:13px; font-weight:600; margin-bottom:14px; cursor:pointer; }
+.profile-more-row{ display:flex; gap:10px; margin-top:10px; }
+.profile-more-row .btn{ flex:1; }
+.dm-blocked{ text-align:center; color:var(--text-tertiary); font-size:12.5px; padding:10px; }
+
 /* ---- Moderator badge ---- */
 .seat-mod{ position:absolute; top:-6px; right:4px; z-index:2; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-grad); color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.35); }
 .seat-mod svg{ width:12px; height:12px; }

@@ -288,7 +288,7 @@ function enterApp(){
   document.getElementById('home-greeting').innerHTML = `${escapeHTML(g)}, ${escapeHTML(u.name.split(' ')[0])}<span>Welcome back to Vibra</span>`;
   if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; document.getElementById('desktop-right').style.display='block'; }
   const nb = document.getElementById('notif-badge');
-  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); } // static "3" in the markup is demo data
+  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); } // static "3" in the markup is demo data
   refreshWallet();
   renderHome();
   navigateTo('home'); // also refreshes the room list from the server
@@ -462,6 +462,7 @@ async function openRoomInner(roomId){
       room = apiRoomToLocal(detail);
       room._seats = detail.seats; // raw backend seat rows, converted below
       room._moderatorIds = detail.moderator_ids || [];
+      room._handRaises = detail.hand_raises || [];
     }catch(e){
       showToast(e.message || 'Could not join room', 'error');
       refreshApiRooms().then(renderHome);   // e.g. the room ended: drop it from the list
@@ -484,6 +485,7 @@ async function openRoomInner(roomId){
   document.getElementById('host-ring').classList.add('speaking');
 
   STATE.moderatorIds = (isApiRoom && room._moderatorIds) || [];
+  if(isApiRoom) applyHandRaises(room._handRaises);
   if(isApiRoom){
     // Build the seat grid from real backend rows instead of the seeded mock.
     ROOM_SEATS_CACHE[roomId] = seatsFromDetail({ seats: room._seats });
@@ -557,6 +559,29 @@ function seatsFromDetail(detail){
   } : (s.is_locked ? { empty:true, locked:true } : { empty:true }));
 }
 
+// Server snapshot -> host's request queue + my own "hand raised" state.
+function applyHandRaises(list){
+  list = list || [];
+  STATE.handQueue = list.map(h => ({ id: h.user.id, name: h.user.username, avatar: h.user.avatar_url, level: h.user.level }));
+  STATE.handRaised = !!STATE.currentUser && list.some(h => h.user.id === STATE.currentUser.id);
+  updateHandButtonUI();
+  const modal = document.getElementById('requests-modal');
+  if(modal && modal.classList.contains('show')) renderRequestsModal();
+}
+
+// The server is the authority on my seat's mute state (host mutes, approvals
+// arrive muted); make the local mic and LiveKit follow it.
+function syncMyMicFromServer(){
+  const mine = STATE.mySeatIndex > -1 ? currentSeats()[STATE.mySeatIndex] : null;
+  const shouldBeOn = !!mine && !mine.muted;
+  if(micOn === shouldBeOn) return;
+  micOn = shouldBeOn;
+  updateVoiceControlUI();
+  if(STATE.liveKitRoom){
+    STATE.liveKitRoom.localParticipant.setMicrophoneEnabled(micOn).catch(e => showToast(micErrorMessage(e), 'error'));
+  }
+}
+
 function isApiActiveRoom(){ return !!STATE.activeRoom && typeof STATE.activeRoom.id === 'number'; }
 function isModeratorId(userId){ return (STATE.moderatorIds || []).includes(userId); }
 function amModerator(){ return !!STATE.currentUser && isModeratorId(STATE.currentUser.id); }
@@ -579,6 +604,8 @@ async function refreshActiveRoom(roomId){
     ROOM_SEATS_CACHE[roomId] = seatsFromDetail(detail).map(s => s.empty ? s : Object.assign(s, { speaking: !!speaking.get(s.userId) }));
     STATE.mySeatIndex = ROOM_SEATS_CACHE[roomId].findIndex(s=>s.isMe);
     STATE.moderatorIds = detail.moderator_ids || [];
+    applyHandRaises(detail.hand_raises);
+    syncMyMicFromServer();
     STATE.activeRoom.online = detail.online_count || 0;
     document.getElementById('room-online-count').textContent = `${STATE.activeRoom.online.toLocaleString()} Online`;
     renderMicGrid();
@@ -675,7 +702,7 @@ function connectRoomSocket(roomId){
           });
         }
       }else if(event.event === 'hand_raised'){
-        if(STATE.isHost && event.user){
+        if(canModerate() && event.user){
           if(!STATE.handQueue.some(r => r.id === event.user.id || r.name === event.user.username)){
             STATE.handQueue.push({
               id: event.user.id,
@@ -687,9 +714,17 @@ function connectRoomSocket(roomId){
           }
         }
       }else if(event.event === 'hand_lowered'){
-        if(STATE.isHost){
+        if(canModerate()){
           STATE.handQueue = STATE.handQueue.filter(r => r.id !== event.user_id);
           updateHandButtonUI();
+          const modal = document.getElementById('requests-modal');
+          if(modal && modal.classList.contains('show')) renderRequestsModal();
+        }
+        if(STATE.currentUser && event.user_id === STATE.currentUser.id){
+          STATE.handRaised = false;
+          updateHandButtonUI();
+          if(event.approved) showToast("You're on stage! Tap the mic to unmute", 'success');
+          else if(event.declined) showToast('The host declined your request this time', 'info');
         }
       }
     }, {
@@ -890,6 +925,8 @@ function openSeatProfile(idx){
       actions.push(`<button class="btn btn-glass full" data-seat-action="toggle-mod" data-seat-idx="${idx}">${ic(targetIsMod ? 'shield-off' : 'shield')} ${targetIsMod ? 'Remove moderator' : 'Make moderator'}</button>`);
     }
     if(apiSeat){
+      actions.push(`<button class="btn btn-glass" data-seat-action="api-profile" data-seat-idx="${idx}">${ic('user-round')} Profile</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="api-message" data-seat-idx="${idx}">${ic('message-circle')} Message</button>`);
       actions.push(`<button class="btn btn-glass" id="seat-follow-btn" data-seat-action="follow" data-seat-idx="${idx}">${ic('user-plus')} Follow</button>`);
       actions.push(`<button class="btn btn-glass" data-seat-action="report-user" data-seat-idx="${idx}">${ic('flag')} Report</button>`);
       actions.push(`<button class="btn btn-glass" data-seat-action="block-user" data-seat-idx="${idx}">${ic('ban')} Block</button>`);
@@ -1005,7 +1042,7 @@ function updateHandButtonUI(){
   const label = document.getElementById('vc-hand-label');
   if(!btn) return;
   let badge = btn.querySelector('.vc-badge');
-  if(STATE.isHost){
+  if(canModerate()){
     label.textContent = 'Requests';
     btn.querySelector('.ic').innerHTML = ic('clipboard-list');
     btn.classList.remove('hand-active');
@@ -1021,7 +1058,7 @@ function updateHandButtonUI(){
   }
 }
 function handleHandButton(){
-  if(STATE.isHost){
+  if(canModerate()){
     renderRequestsModal();
     openModal('requests-modal');
     return;
@@ -1061,6 +1098,16 @@ function renderRequestsModal(){
 function approveRequest(i){
   const req = STATE.handQueue[i];
   if(!req) return;
+  if(isApiActiveRoom()){
+    Api.decideHandRaise(STATE.activeRoom.id, req.id, 'approve').then(() => {
+      STATE.handQueue = STATE.handQueue.filter(r => r.id !== req.id);
+      renderRequestsModal();
+      updateHandButtonUI();
+      scheduleRoomRefresh(STATE.activeRoom.id);
+      showToast(`${req.name} is on stage`, 'success');
+    }).catch(e => showToast(e.message || 'Could not approve request', 'error'));
+    return;
+  }
   const seats = currentSeats();
   const emptyIdx = seats.findIndex(s=>s.empty);
   if(emptyIdx === -1){ showToast('No empty seats available', 'error'); return; }
@@ -1075,6 +1122,15 @@ function approveRequest(i){
 function declineRequest(i){
   const req = STATE.handQueue[i];
   if(!req) return;
+  if(isApiActiveRoom()){
+    Api.decideHandRaise(STATE.activeRoom.id, req.id, 'decline').then(() => {
+      STATE.handQueue = STATE.handQueue.filter(r => r.id !== req.id);
+      renderRequestsModal();
+      updateHandButtonUI();
+      showToast(`Declined ${req.name}`, 'info');
+    }).catch(e => showToast(e.message || 'Could not decline request', 'error'));
+    return;
+  }
   STATE.handQueue.splice(i,1);
   renderRequestsModal();
   updateHandButtonUI();
@@ -1214,6 +1270,20 @@ function updateVoiceControlUI(){
   spBtn.querySelector('.ic').innerHTML = ic(speakerOn ? 'volume-2' : 'volume-x');
 }
 function toggleMicrophone(){
+  if(isApiActiveRoom() && STATE.mySeatIndex > -1){
+    const position = STATE.mySeatIndex;
+    Api.toggleMute(STATE.activeRoom.id, position).then(res => {
+      micOn = !res.is_muted;
+      updateVoiceControlUI();
+      const seat = currentSeats()[position];
+      if(seat){ seat.muted = res.is_muted; renderMicGrid(); }
+      if(STATE.liveKitRoom){
+        STATE.liveKitRoom.localParticipant.setMicrophoneEnabled(micOn).catch(e => showToast(micErrorMessage(e), 'error'));
+      }
+      showToast(micOn ? 'Microphone unmuted' : 'Microphone muted', 'info');
+    }).catch(e => showToast(e.message || 'Could not change mute', 'error'));
+    return;
+  }
   micOn = !micOn;
   updateVoiceControlUI();
   if(STATE.mySeatIndex > -1){
@@ -1341,6 +1411,9 @@ function renderRoomMoreSheet(){
     ? currentSeats().filter(s=>s.empty).every(s=>s.locked)
     : STATE.seatsLocked;
   rows.push(`<div class="sheet-action-row" data-more-action="share"><div class="ic">${ic('share-2')}</div>Share room</div>`);
+  if(STATE.liveKitRoom && typeof LivekitClient !== 'undefined'){
+    rows.push(`<div class="sheet-action-row" data-more-action="pick-mic"><div class="ic">${ic('mic')}</div>Choose microphone</div>`);
+  }
   if(canModerate()){
     rows.push(`<div class="sheet-action-row" data-more-action="mute-all"><div class="ic">${ic('mic-off')}</div>Mute everyone on mic</div>`);
     rows.push(`<div class="sheet-action-row" data-more-action="lock-seats"><div class="ic">${ic(allLocked?'lock-open':'lock')}</div>${allLocked?'Unlock empty seats':'Lock empty seats'}</div>`);
@@ -1372,6 +1445,19 @@ function openReportSheet(target, label){
   openModal('room-more-modal');
 }
 
+function openMicPicker(){
+  LivekitClient.Room.getLocalDevices('audioinput', true).then(devices => {
+    if(!devices.length){ showToast('No microphones found', 'error'); return; }
+    const current = STATE.liveKitRoom && STATE.liveKitRoom.getActiveDevice
+      ? STATE.liveKitRoom.getActiveDevice('audioinput') : null;
+    document.getElementById('room-more-title').textContent = 'Choose microphone';
+    document.getElementById('room-more-list').innerHTML = devices.map((d, i) =>
+      `<div class="sheet-action-row" data-more-action="mic:${escapeAttr(d.deviceId)}"><div class="ic">${ic(d.deviceId === current ? 'circle-check' : 'mic')}</div>${escapeHTML(d.label || `Microphone ${i + 1}`)}</div>`
+    ).join('');
+    openModal('room-more-modal');
+  }).catch(e => showToast(micErrorMessage(e), 'error'));
+}
+
 function shareRoom(){
   const room = STATE.activeRoom;
   if(!room) return;
@@ -1400,6 +1486,16 @@ function handleRoomMoreAction(action){
   closeModal('room-more-modal');
   const api = isApiActiveRoom();
   const roomId = STATE.activeRoom && STATE.activeRoom.id;
+  if(action === 'pick-mic'){ openMicPicker(); return; }
+  if(action.startsWith('mic:')){
+    const deviceId = action.slice(4);
+    if(STATE.liveKitRoom){
+      STATE.liveKitRoom.switchActiveDevice('audioinput', deviceId)
+        .then(()=> showToast('Microphone switched', 'success'))
+        .catch(e => showToast(micErrorMessage(e), 'error'));
+    }
+    return;
+  }
   if(action.startsWith('report:')){
     const target = pendingReport;
     pendingReport = null;
@@ -1703,6 +1799,15 @@ function profileHTML(user, isSelf){
 
 function renderOwnProfile(){
   const u = STATE.currentUser;
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    const target = document.getElementById('profile-render-target');
+    target.innerHTML = apiProfileHTML({
+      id: u.id, username: u.username, avatar_url: u.avatar, bio: u.bio, country: u.country,
+      level: u.level || 1, followers_count: u.followers || 0, following_count: u.following || 0,
+      live_room: null,
+    }, true);
+    return;
+  }
   const selfAsProfileUser = {
     ...u,
     bio: u.bio || 'New to Vibra ✨ Say hi!',
@@ -1747,7 +1852,26 @@ function seedDMThread(userId){
 function renderMessagesList(){
   const list = document.getElementById('messages-list');
   if(!VIBRA_CONFIG.DEMO_DATA){
-    list.innerHTML = emptyStateHTML('💬','Direct messages are coming soon','For now, chat with everyone inside a room.');
+    list.innerHTML = emptyStateHTML('⏳','Loading…','');
+    Api.listConversations().then(rows => {
+      list.innerHTML = rows.length ? rows.map(c => {
+        const when = new Date(c.last_message.created_at);
+        const time = when.toDateString() === new Date().toDateString()
+          ? when.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+          : when.toLocaleDateString([], {month:'short', day:'numeric'});
+        const mine = STATE.currentUser && c.last_message.sender_id === STATE.currentUser.id;
+        return `<div class="msg-list-row ${c.unread?'unread':''}" data-open-dm="${Number(c.user.id)}">
+          <div class="vibra-ring"><img class="avatar" src="${imgSrc(c.user.avatar_url)}"></div>
+          <div class="meta">
+            <div class="top"><span class="name">${escapeHTML(c.user.username)}</span><span class="time">${escapeHTML(time)}</span></div>
+            <div class="preview">${mine ? 'You: ' : ''}${escapeHTML(c.last_message.text)}</div>
+          </div>
+          ${c.unread ? '<span class="unread-dot"></span>' : ''}
+        </div>`;
+      }).join('') : emptyStateHTML('💬','No messages yet','Open someone\'s profile in a room and tap Message.');
+    }).catch(e => {
+      list.innerHTML = emptyStateHTML('⚠️','Could not load messages', escapeHTML(e.message || ''));
+    });
     return;
   }
   list.innerHTML = DATA.dmSeed.map(d=>{
@@ -1764,6 +1888,10 @@ function renderMessagesList(){
 }
 
 function openDM(userId){
+  if(!VIBRA_CONFIG.DEMO_DATA){
+    if(typeof userId === 'string' && /^\d+$/.test(userId)) userId = Number(userId);
+    if(typeof userId === 'number'){ openApiDM(userId); return; }
+  }
   const u = DATA.getUser(userId);
   if(!u) return;
   STATE.activeDM = userId;
@@ -1790,12 +1918,198 @@ function sendDM(){
   const text = input.value.trim();
   if(!STATE.activeDM) return;
   if(!text){ showToast('Message cannot be empty', 'error'); return; }
+  if(typeof STATE.activeDM === 'number' && !VIBRA_CONFIG.DEMO_DATA){
+    const to = STATE.activeDM;
+    const dmSendBtn = document.getElementById('dm-send');
+    if(dmSendBtn) dmSendBtn.disabled = true;
+    Api.sendDirectMessage(to, text).then(msg => {
+      input.value = '';
+      (dmThreads[to] = dmThreads[to] || []).push(dmFromApi(msg));
+      if(STATE.activeDM === to) renderDMBody();
+    }).catch(e => {
+      if(dmSendBtn) dmSendBtn.disabled = false;
+      showToast(e.message || 'Could not send message', 'error');
+    });
+    return;
+  }
   dmThreads[STATE.activeDM].push({who:'me', text, time: nowTime()});
   input.value = '';
   const dmSendBtn = document.getElementById('dm-send');
   if(dmSendBtn) dmSendBtn.disabled = true;
   renderDMBody();
   showToast('Message sent successfully', 'success');
+}
+
+function dmFromApi(m){
+  const mine = STATE.currentUser && m.sender_id === STATE.currentUser.id;
+  return { who: mine ? 'me' : 'them', text: m.text,
+           time: new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) };
+}
+function openApiDM(userId){
+  STATE.activeDM = userId;
+  dmThreads[userId] = [];
+  document.getElementById('dm-avatar').src = '';
+  document.getElementById('dm-name').textContent = '…';
+  document.getElementById('dm-status').textContent = '';
+  document.getElementById('dm-input').value = '';
+  document.getElementById('dm-input').disabled = false;
+  const dmSendBtn = document.getElementById('dm-send');
+  if(dmSendBtn) dmSendBtn.disabled = true;
+  renderDMBody();
+  openOverlay('screen-dm');
+  Api.getThread(userId).then(t => {
+    if(STATE.activeDM !== userId) return;
+    document.getElementById('dm-avatar').src = safeImgUrl(t.user.avatar_url);
+    document.getElementById('dm-name').textContent = t.user.username;
+    document.getElementById('dm-status').textContent = t.blocked ? 'Unavailable' : `Lv ${t.user.level}`;
+    document.getElementById('dm-input').disabled = !!t.blocked;
+    dmThreads[userId] = t.messages.map(dmFromApi);
+    renderDMBody();
+    if(t.blocked){
+      document.getElementById('dm-body').insertAdjacentHTML('beforeend', `<div class="dm-blocked">You can't message this person.</div>`);
+    }
+    refreshDMBadge();
+  }).catch(e => showToast(e.message || 'Could not open conversation', 'error'));
+}
+
+/* ---------------------------- PERSONAL SOCKET (DMs + notifications) -------- */
+let userSocket = null;
+let userSocketTimer = null;
+let userSocketAttempts = 0;
+function startUserSocket(){
+  if(VIBRA_CONFIG.DEMO_DATA || !STATE.currentUser || typeof WebSocket === 'undefined') return;
+  stopUserSocket();
+  const open = () => {
+    userSocket = Api.connectUserSocket(onUserEvent, {
+      onClose: (e) => {
+        userSocket = null;
+        if(!STATE.currentUser || (e && (e.code === 1000 || e.code === 4001))) return;
+        const delay = Math.min(1000 * Math.pow(1.8, userSocketAttempts++), 30000);
+        // A cheap authed call first lets the API client refresh an expired token.
+        userSocketTimer = setTimeout(() => { refreshDMBadge(); open(); }, delay);
+      },
+    });
+    userSocket.onopen = () => { userSocketAttempts = 0; };
+  };
+  open();
+}
+function stopUserSocket(){
+  clearTimeout(userSocketTimer);
+  if(userSocket){ try{ userSocket.close(1000); }catch(e){} userSocket = null; }
+}
+function onUserEvent(event){
+  if(event.event === 'dm_new'){
+    const from = event.from || {};
+    if(STATE.activeDM === from.id && document.getElementById('screen-dm').classList.contains('active')){
+      (dmThreads[from.id] = dmThreads[from.id] || []).push(dmFromApi(event.message));
+      renderDMBody();
+      Api.getThread(from.id).catch(()=>{}); // marks it read
+    } else {
+      showToast(`${from.username || 'Someone'}: ${(event.message && event.message.text || '').slice(0, 60)}`, 'info');
+      refreshDMBadge();
+    }
+    const tab = document.getElementById('tab-messages');
+    if(tab && !tab.classList.contains('hidden')) renderMessagesList();
+  } else if(event.event === 'notification_new'){
+    refreshNotifBadge();
+  }
+}
+
+function setDMBadge(count){
+  document.querySelectorAll('[data-nav="messages"]').forEach(el => {
+    let b = el.querySelector('.nav-badge');
+    if(!b){ b = document.createElement('span'); b.className = 'nav-badge'; el.appendChild(b); }
+    b.textContent = count > 99 ? '99+' : String(count);
+    b.classList.toggle('show', count > 0);
+  });
+}
+function refreshDMBadge(){
+  if(VIBRA_CONFIG.DEMO_DATA || !STATE.currentUser) return;
+  Api.unreadDMCount().then(r => setDMBadge(r.unread || 0)).catch(()=>{});
+}
+
+/* ---------------------------- REAL PROFILES ------------------------------- */
+function apiProfileHTML(p, isSelf){
+  const grad = DATA.gradients[(p.level || 1) % DATA.gradients.length];
+  const live = p.live_room
+    ? `<div class="live-now-pill" data-join-live="${Number(p.live_room.id)}"><span class="live-dot"></span>Live now: ${escapeHTML(p.live_room.name)}</div>`
+    : '';
+  const actions = isSelf
+    ? `<div class="profile-btn-row"><button class="btn btn-glass" style="flex:1;" data-open-settings>Edit Profile</button></div>`
+    : `<div class="profile-btn-row">
+         <button class="btn ${p.is_following?'btn-glass':'btn-primary'}" style="flex:1;" data-api-follow="${Number(p.id)}" data-following="${p.is_following?'1':''}">${p.is_following?'Following':'Follow'}</button>
+         <button class="btn btn-glass" style="flex:1;" data-dm-user="${Number(p.id)}">${ic('message-circle')} Message</button>
+       </div>
+       <div class="profile-more-row">
+         <button class="btn btn-glass btn-sm" data-api-report="${Number(p.id)}" data-username="${escapeAttr(p.username)}">${ic('flag')} Report</button>
+         <button class="btn btn-glass btn-sm" data-api-block="${Number(p.id)}" data-blocked="${p.is_blocked?'1':''}" data-username="${escapeAttr(p.username)}">${ic('ban')} ${p.is_blocked?'Unblock':'Block'}</button>
+       </div>`;
+  return `
+    <div class="profile-cover" style="background:${grad};"></div>
+    <div class="profile-main">
+      <img class="avatar" src="${imgSrc(p.avatar_url)}">
+      <div class="profile-name-row"><h2>${escapeHTML(p.username)}</h2><span class="level-badge">Lvl ${Number(p.level || 1)}</span></div>
+      <div class="profile-username">@${escapeHTML(p.username)}</div>
+      ${p.bio ? `<div class="profile-bio">${escapeHTML(p.bio)}</div>` : '<div style="height:12px"></div>'}
+      ${p.country ? `<div class="profile-country">${ic('map-pin')} ${escapeHTML(p.country)}</div>` : ''}
+      ${live}
+      <div class="profile-stats">
+        <div class="stat"><b data-followers-count>${Number(p.followers_count || 0).toLocaleString()}</b><span>Followers</span></div>
+        <div class="stat"><b>${Number(p.following_count || 0).toLocaleString()}</b><span>Following</span></div>
+        <div class="stat"><b>${Number(p.level || 1)}</b><span>Level</span></div>
+      </div>
+      ${actions}
+    </div>`;
+}
+function openApiProfile(username){
+  const target = document.getElementById('user-profile-target');
+  target.innerHTML = emptyStateHTML('⏳','Loading…','');
+  openOverlay('screen-user-profile');
+  Api.getProfile(username).then(p => {
+    const isSelf = STATE.currentUser && p.id === STATE.currentUser.id;
+    target.innerHTML = apiProfileHTML(p, isSelf);
+  }).catch(e => {
+    target.innerHTML = emptyStateHTML('⚠️','Could not load profile', escapeHTML(e.message || ''));
+  });
+}
+function bindApiProfileActions(){
+  document.body.addEventListener('click', e => {
+    const follow = e.target.closest('[data-api-follow]');
+    if(follow){
+      const id = Number(follow.dataset.apiFollow);
+      const following = !!follow.dataset.following;
+      (following ? Api.unfollow(id) : Api.follow(id)).then(res => {
+        follow.dataset.following = following ? '' : '1';
+        follow.textContent = following ? 'Follow' : 'Following';
+        follow.classList.toggle('btn-primary', following);
+        follow.classList.toggle('btn-glass', !following);
+        const count = follow.closest('.profile-main').querySelector('[data-followers-count]');
+        if(count && res && res.followers_count !== undefined) count.textContent = Number(res.followers_count).toLocaleString();
+      }).catch(err => showToast(err.message || 'Could not update follow', 'error'));
+      return;
+    }
+    const block = e.target.closest('[data-api-block]');
+    if(block){
+      const id = Number(block.dataset.apiBlock);
+      const blocked = !!block.dataset.blocked;
+      (blocked ? Api.unblockUser(id) : Api.blockUser(id)).then(() => {
+        block.dataset.blocked = blocked ? '' : '1';
+        block.innerHTML = `${ic('ban')} ${blocked ? 'Block' : 'Unblock'}`;
+        showToast(blocked ? `Unblocked ${block.dataset.username}` : `Blocked ${block.dataset.username}`, 'success');
+      }).catch(err => showToast(err.message || 'Could not update block', 'error'));
+      return;
+    }
+    const report = e.target.closest('[data-api-report]');
+    if(report){
+      openReportSheet({ roomId: null, userId: Number(report.dataset.apiReport) }, report.dataset.username);
+      return;
+    }
+    const live = e.target.closest('[data-join-live]');
+    if(live){
+      closeOverlay('screen-user-profile');
+      openRoom(Number(live.dataset.joinLive));
+    }
+  });
 }
 
 /* ---------------------------- NOTIFICATIONS -------------------------------- */
@@ -1898,6 +2212,8 @@ function resetToLoginScreen(message, type){
 }
 function doLogout(){
   closeModal('logout-modal');
+  stopUserSocket();
+  clearInterval(notifPollTimer);
   resetToLoginScreen('You have been logged out', 'info');
 }
 function handleSessionExpired(){
@@ -2189,6 +2505,16 @@ function bindRoomScreen(){
         showToast('Seat lock toggled', 'info');
       }
     }
+    else if(action === 'api-profile'){
+      const seat = currentSeats()[idx];
+      closeModal('seat-profile-modal');
+      if(seat && seat.name) openApiProfile(seat.name);
+    }
+    else if(action === 'api-message'){
+      const seat = currentSeats()[idx];
+      closeModal('seat-profile-modal');
+      if(seat && seat.userId) openDM(seat.userId);
+    }
     else if(action === 'toggle-mod'){
       const seat = currentSeats()[idx];
       if(!seat || !seat.userId) return;
@@ -2362,6 +2688,7 @@ function bindWallet(){
 }
 
 function bindProfileAndMessages(){
+  bindApiProfileActions();
   document.body.addEventListener('click', e=>{
     const followBtn = e.target.closest('[data-follow]');
     if(followBtn){

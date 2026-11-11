@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     EndRoomView,
+    HandRaiseDecisionView,
     ForceMuteSeatView,
     JoinRoomView,
     KickParticipantView,
@@ -31,6 +32,7 @@ urlpatterns = [
     path("<int:room_id>/seats/<int:position>/force-mute/", ForceMuteSeatView.as_view(), name="seat-force-mute"),
     path("<int:room_id>/seats/<int:position>/lock/", LockSeatView.as_view(), name="seat-lock"),
     path("<int:room_id>/hand-raise/", RaiseHandView.as_view(), name="hand-raise"),
+    path("<int:room_id>/hand-raise/<int:user_id>/<str:decision>/", HandRaiseDecisionView.as_view(), name="hand-raise-decision"),
     path("<int:room_id>/messages/", MessageListCreateView.as_view(), name="room-messages"),
     path("<int:room_id>/moderators/", ModeratorView.as_view(), name="room-moderators"),
     path("<int:room_id>/voice-token/", VoiceTokenView.as_view(), name="voice-token"),

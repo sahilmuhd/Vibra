@@ -117,3 +117,51 @@ class NotificationTests(RoomBase):
         self.alice_c.post(f"/api/auth/users/{self.host.id}/follow/")
         self.assertEqual(self.bob_c.get("/api/notifications/").data, [])
         self.assertEqual(Notification.objects.count(), 1)
+
+
+class HandRaiseDecisionTests(RoomBase):
+    def setUp(self):
+        super().setUp()
+        self.rid = self.create_room().data["id"]
+        self.alice_c.post(f"/api/rooms/{self.rid}/join/")
+        self.alice_c.post(f"/api/rooms/{self.rid}/hand-raise/")
+
+    def decide(self, decision, client=None, user=None):
+        user = user or self.alice
+        return (client or self.host_c).post(f"/api/rooms/{self.rid}/hand-raise/{user.id}/{decision}/")
+
+    def test_requests_are_in_room_detail_oldest_first(self):
+        self.bob_c.post(f"/api/rooms/{self.rid}/join/")
+        self.bob_c.post(f"/api/rooms/{self.rid}/hand-raise/")
+        hands = self.host_c.get(f"/api/rooms/{self.rid}/").data["hand_raises"]
+        self.assertEqual([h["user"]["id"] for h in hands], [self.alice.id, self.bob.id])
+
+    def test_approve_seats_user_muted_and_grants_publish(self):
+        from unittest import mock
+
+        Seat.objects.filter(room_id=self.rid, position=1).update(is_locked=True)
+        with mock.patch("apps.rooms.views.voice_admin") as va:
+            res = self.decide("approve")
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data["position"], 2)  # seat 0 = host, seat 1 locked
+        seat = Seat.objects.get(room_id=self.rid, position=2)
+        self.assertEqual(seat.user, self.alice)
+        self.assertTrue(seat.is_muted)
+        va.set_can_publish.assert_called_once()
+        self.assertEqual(self.decide("approve").status_code, 404)  # request consumed
+
+    def test_decline_and_permissions(self):
+        self.assertEqual(self.decide("approve", client=self.bob_c).status_code, 403)
+        self.assertEqual(self.decide("decline").data, {"declined": True})
+        self.assertEqual(self.decide("maybe").status_code, 404)
+
+    def test_no_free_seat(self):
+        Seat.objects.filter(room_id=self.rid).exclude(position=0).update(is_locked=True)
+        self.assertEqual(self.decide("approve").status_code, 409)
+
+
+class ProfileLiveRoomTests(RoomBase):
+    def test_profile_shows_room_being_hosted(self):
+        self.assertIsNone(self.alice_c.get("/api/auth/users/hosty/").data["live_room"])
+        rid = self.create_room(name="Late Talk").data["id"]
+        self.assertEqual(self.alice_c.get("/api/auth/users/hosty/").data["live_room"], {"id": rid, "name": "Late Talk"})

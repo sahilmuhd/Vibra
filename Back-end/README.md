@@ -54,7 +54,7 @@ Connect a WebSocket client to `ws://localhost:8000/ws/rooms/<id>/?token=<jwt acc
 
 ## What's intentionally NOT done yet (next steps)
 
-- Push notifications (would hang off `apps/notifications`)
+- Mobile push notifications (in-app notifications and DMs are live over `/ws/me/`)
 - Per-endpoint throttles beyond the auth scope (e.g. messages should be much lower than `300/min`)
 - Admin-side content moderation / profanity filtering on `Message.text`
 - `livekit-api` was pinned at `0.7.1` in requirements.txt but the latest
@@ -76,6 +76,13 @@ node --test Front-end/tests/api.test.js Front-end/tests/app.test.js
 `SELECT ... FOR UPDATE`). Set `TEST_DB=postgres` (plus `DB_HOST`, `DB_USER`,
 `DB_PASSWORD`) to run the same suite on PostgreSQL, which also enables the
 concurrent-gift test. CI (`.github/workflows/ci.yml`) does this on every push.
+
+## End-to-end voice test
+
+`tests/e2e/voice.mjs` drives two headless Chrome instances (host + listener)
+through a real LiveKit session: take a seat, be heard, speaking ring, host mute
+revoking publish rights, live DMs and ending the room. Setup steps are at the top
+of the file. It needs real `LIVEKIT_*` credentials, so it is not part of CI.
 
 ## Operations
 

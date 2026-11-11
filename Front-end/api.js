@@ -275,6 +275,29 @@ const Api = {
     return this.request(`/notifications/read/`, { method: "POST" });
   },
 
+  // ---- hand-raise answers (host / moderator) ----
+  // decision: "approve" (seats them, muted) | "decline"
+  async decideHandRaise(roomId, userId, decision) {
+    return this.request(`/rooms/${roomId}/hand-raise/${userId}/${decision}/`, { method: "POST" });
+  },
+
+  // ---- direct messages ----
+  async listConversations() {
+    return this.request(`/dms/`);
+  },
+
+  async getThread(userId) {
+    return this.request(`/dms/${userId}/`);
+  },
+
+  async sendDirectMessage(userId, text) {
+    return this.request(`/dms/${userId}/`, { method: "POST", body: { text } });
+  },
+
+  async unreadDMCount() {
+    return this.request(`/dms/unread-count/`);
+  },
+
   // ---- voice (LiveKit) ----
   // Call right after taking a seat (or on entering a room to listen).
   // Returns { token, url, room } — hand the token+url straight to the
@@ -320,9 +343,23 @@ const Api = {
   // attach its own handlers. The JWT travels in the query string because
   // browsers cannot set headers on a WebSocket handshake.
   wsUrl(roomId) {
+    return this.wsPath(`/ws/rooms/${roomId}/`);
+  },
+
+  wsPath(path) {
     const token = this.getAccessToken() || "";
     const wsBase = API_BASE.replace(/^http/, "ws").replace(/\/api\/?$/, "");
-    return `${wsBase}/ws/rooms/${roomId}/?token=${encodeURIComponent(token)}`;
+    return `${wsBase}${path}?token=${encodeURIComponent(token)}`;
+  },
+
+  // Personal channel: new DMs and notifications pushed to this user.
+  connectUserSocket(onEvent, { onClose } = {}) {
+    const socket = new WebSocket(this.wsPath("/ws/me/"));
+    socket.onmessage = (msg) => {
+      try { onEvent(JSON.parse(msg.data)); } catch (e) { console.error("bad ws message", e); }
+    };
+    if (onClose) socket.onclose = onClose;
+    return socket;
   },
   connectRoomSocket(roomId, onEvent, { onClose, onOpen } = {}) {
     const socket = new WebSocket(this.wsUrl(roomId));

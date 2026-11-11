@@ -42,7 +42,7 @@ def room_queryset():
     count annotated, so list + detail don't run N+1 queries."""
     return (
         Room.objects.select_related("host__profile")
-        .prefetch_related("seats__user__profile", "moderators")
+        .prefetch_related("seats__user__profile", "moderators", "hand_raises__user__profile")
         .annotate(online_total=Count("participants", distinct=True))
     )
 
@@ -158,8 +158,11 @@ class TakeSeatView(APIView):
             )
 
             seat.user = request.user
+            # Taking a seat yourself means you're about to talk: the client turns the
+            # mic on, so record it as live (approved hand-raises arrive muted instead).
+            seat.is_muted = False
             seat.muted_by_host = False
-            seat.save(update_fields=["user", "muted_by_host"])
+            seat.save(update_fields=["user", "is_muted", "muted_by_host"])
             HandRaise.objects.filter(room=room, user=request.user).delete()
 
         broadcast_to_room(room.id, "seat.update", {
@@ -462,3 +465,56 @@ class ReportView(APIView):
             details=str(request.data.get("details", ""))[:500],
         )
         return Response({"id": report.id}, status=status.HTTP_201_CREATED)
+
+
+class HandRaiseDecisionView(APIView):
+    """Host/moderator answers a raised hand.
+
+    approve: seat the user in the first free, unlocked seat (they arrive muted
+             and unmute themselves) and grant them publish rights in LiveKit.
+    decline: drop the request.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, room_id, user_id, decision):
+        room = get_object_or_404(Room, id=room_id)
+        if not room.is_live:
+            return Response(ENDED, status=status.HTTP_410_GONE)
+        if not can_moderate(room, request.user):
+            raise PermissionDenied("Only the host or a moderator can answer requests.")
+        if decision not in ("approve", "decline"):
+            return Response({"detail": "Unknown decision."}, status=status.HTTP_404_NOT_FOUND)
+
+        if decision == "decline":
+            deleted, _ = HandRaise.objects.filter(room=room, user_id=user_id).delete()
+            if deleted:
+                broadcast_to_room(room.id, "hand.lowered", {"user_id": user_id, "declined": True})
+            return Response({"declined": bool(deleted)})
+
+        with transaction.atomic():
+            hand = HandRaise.objects.select_for_update().filter(room=room, user_id=user_id).first()
+            if hand is None:
+                return Response({"detail": "That request is no longer open."}, status=status.HTTP_404_NOT_FOUND)
+            if Seat.objects.filter(room=room, user_id=user_id).exists():
+                hand.delete()
+                return Response({"detail": "Already on mic."}, status=status.HTTP_409_CONFLICT)
+            seat = (
+                Seat.objects.select_for_update()
+                .filter(room=room, user__isnull=True, is_locked=False)
+                .order_by("position")
+                .first()
+            )
+            if seat is None:
+                return Response({"detail": "No free seats."}, status=status.HTTP_409_CONFLICT)
+            seat.user_id = user_id
+            seat.is_muted = True
+            seat.muted_by_host = False
+            seat.save(update_fields=["user", "is_muted", "muted_by_host"])
+            hand.delete()
+
+        broadcast_to_room(room.id, "hand.lowered", {"user_id": user_id, "approved": True})
+        broadcast_to_room(room.id, "seat.update", {
+            "position": seat.position, "user_id": user_id, "action": "taken", "invited": True,
+        })
+        voice_admin.set_can_publish(room, user_id, True)
+        return Response({"approved": True, "position": seat.position})

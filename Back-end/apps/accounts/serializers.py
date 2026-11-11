@@ -36,12 +36,14 @@ class ProfileSerializer(serializers.ModelSerializer):
     # Relationship of the *viewer* to this profile (false when there is no request).
     is_following = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
+    live_room = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
         fields = [
             "id", "username", "avatar_url", "bio", "country", "level",
-            "followers_count", "following_count", "is_following", "is_blocked", "created_at",
+            "followers_count", "following_count", "is_following", "is_blocked",
+            "live_room", "created_at",
         ]
         # `username` is read-only here: it is mirrored on auth.User (used for
         # login), and PATCHing only Profile.username silently desynced the two.
@@ -62,6 +64,11 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_is_following(self, obj):
         viewer = self._viewer()
         return bool(viewer) and obj.user.follower_set.filter(follower=viewer).exists()
+
+    def get_live_room(self, obj):
+        """The room this user is hosting right now, if any (for "Live now" on profiles)."""
+        room = obj.user.hosted_rooms.filter(is_live=True).order_by("-created_at").first()
+        return {"id": room.id, "name": room.name} if room else None
 
     def get_is_blocked(self, obj):
         viewer = self._viewer()

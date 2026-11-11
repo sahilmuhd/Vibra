@@ -33,3 +33,19 @@ def broadcast_to_room(room_id: int, event_type: str, payload: dict) -> None:
         )
     except Exception:  # noqa: BLE001
         logger.exception("broadcast_to_room failed (room=%s, event=%s)", room_id, event_type)
+
+
+def broadcast_to_user(user_id: int, event_type: str, payload: dict) -> None:
+    """Send an event to every open /ws/me/ socket of one user (DMs, notifications).
+    Same best-effort contract as broadcast_to_room."""
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    safe_payload = json.loads(json.dumps(payload, cls=DjangoJSONEncoder))
+    try:
+        async_to_sync(channel_layer.group_send)(
+            f"user_{user_id}",
+            {"type": event_type.replace(".", "_"), "payload": safe_payload},
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("broadcast_to_user failed (user=%s, event=%s)", user_id, event_type)

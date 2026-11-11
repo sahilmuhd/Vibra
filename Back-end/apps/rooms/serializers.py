@@ -30,15 +30,20 @@ class SeatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Seat
-        fields = ["position", "user", "is_muted", "is_locked"]
+        fields = ["position", "user", "is_muted", "muted_by_host", "is_locked"]
 
 
 class RoomDetailSerializer(RoomListSerializer):
     seats = SeatSerializer(many=True, read_only=True)
     moderator_ids = serializers.SerializerMethodField()
+    hand_raises = serializers.SerializerMethodField()
 
     class Meta(RoomListSerializer.Meta):
-        fields = RoomListSerializer.Meta.fields + ["seats", "voice_room_name", "moderator_ids"]
+        fields = RoomListSerializer.Meta.fields + ["seats", "voice_room_name", "moderator_ids", "hand_raises"]
+
+    def get_hand_raises(self, obj):
+        # Oldest first: the host answers requests in the order they came in.
+        return HandRaiseSerializer(obj.hand_raises.all(), many=True).data
 
     def get_moderator_ids(self, obj):
         return [m.user_id for m in obj.moderators.all()]

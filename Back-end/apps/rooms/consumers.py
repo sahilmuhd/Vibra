@@ -172,3 +172,32 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await sync_to_async(
             RoomParticipant.objects.filter(room_id=self.room_id, user=self.user).update
         )(last_seen=timezone.now())
+
+
+class UserConsumer(AsyncJsonWebsocketConsumer):
+    """Personal channel: wss://<host>/ws/me/?token=<jwt>
+    Receive-only fan-out of events addressed to one user (new DMs,
+    notifications). Clients never send anything meaningful on it."""
+
+    async def connect(self):
+        self.group_name = None
+        user = self.scope.get("user")
+        if user is None or not user.is_authenticated:
+            await self.close(code=4001)
+            return
+        self.group_name = f"user_{user.id}"
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        if self.group_name:
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def receive_json(self, content, **kwargs):
+        return  # nothing to accept from clients
+
+    async def dm_new(self, event):
+        await self.send_json({"event": "dm_new", **event["payload"]})
+
+    async def notification_new(self, event):
+        await self.send_json({"event": "notification_new", **event["payload"]})
