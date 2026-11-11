@@ -128,6 +128,7 @@ sudo -u vibra "$APP_DIR/venv/bin/python" manage.py collectstatic --noinput -v 0
 
 # --- 5. Services ----------------------------------------------------------------
 say "Installing systemd services (API, cleanup every 2 min, nightly backup)"
+install -d -o postgres -g postgres -m 700 /var/backups/vibra
 install -m 644 "$APP_DIR"/deploy/systemd/vibra-*.service "$APP_DIR"/deploy/systemd/vibra-*.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now vibra-api.service vibra-cleanup.timer vibra-backup.timer
@@ -153,12 +154,19 @@ systemctl reload nginx
 # --- 7. Smoke test ---------------------------------------------------------------
 say "Checking the API through nginx"
 sleep 2
-CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $API_DOMAIN" -H 'X-Forwarded-Proto: https' http://127.0.0.1/api/rooms/ || true)"
+# The app itself (nginx overwrites X-Forwarded-Proto, so ask daphne directly).
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $API_DOMAIN" -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$APP_PORT/api/rooms/" || true)"
 if [ "$CODE" = "401" ]; then
   echo "API answers (401 = needs login, as expected)"
 else
   warn "API returned '$CODE' (expected 401). See: journalctl -u vibra-api -n 50"
 fi
+# Through nginx: before HTTPS exists Django redirects http -> https, which proves the routing.
+VIA="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -H "Host: $API_DOMAIN" http://127.0.0.1/api/rooms/ || true)"
+case "$VIA" in
+  "301 https://$API_DOMAIN/"*|401*) echo "nginx routes $API_DOMAIN to the API" ;;
+  *) warn "nginx returned '$VIA' for $API_DOMAIN. Check: sudo nginx -T | grep -A3 $API_DOMAIN" ;;
+esac
 
 cat <<EOF
 
