@@ -761,9 +761,10 @@ function disconnectRoomSocket(){
 
 /* ---- real voice (LiveKit) — API rooms only ----
    Everyone who opens the room connects as a listener right away (can_publish
-   is decided server-side by voice.js based on whether they hold a seat).
-   Taking a seat later just flips setMicrophoneEnabled(true) on the same
-   connection — no need to reconnect. */
+   is decided server-side by voice.py based on whether they hold a seat).
+   Taking a seat makes the server grant publish rights on this live connection
+   (apps/rooms/voice_admin.py); publishAfterSeat() waits for that grant and only
+   falls back to reconnecting with a fresh token if it never arrives. */
 async function connectVoice(roomId){
   if(typeof LivekitClient === 'undefined'){
     console.error('LiveKit SDK not loaded — check the <script> tag in index.html');
@@ -823,7 +824,8 @@ async function connectVoice(roomId){
     // If we're already seated when this connects (e.g. host reopening their
     // own room), publish the mic immediately.
     if(STATE.mySeatIndex > -1 && micOn){
-      await room.localParticipant.setMicrophoneEnabled(true);
+      try{ await room.localParticipant.setMicrophoneEnabled(true); }
+      catch(e){ showToast(micErrorMessage(e), 'error'); }
     }
   }catch(e){
     console.error('Voice connection failed', e);
@@ -831,6 +833,28 @@ async function connectVoice(roomId){
   }
 }
 let voiceClosingOnPurpose = false;
+
+// After taking a seat: wait (briefly) for the server's publish grant to reach
+// this connection, then turn the mic on. If the grant never arrives (e.g. the
+// backend could not reach LiveKit), reconnect: the new token is minted from the
+// seat we now hold, so it can publish. connectVoice() then enables the mic.
+async function publishAfterSeat(roomId){
+  const room = STATE.liveKitRoom;
+  if(!room) return;
+  const lp = room.localParticipant;
+  const canPublish = () => !!(lp.permissions && lp.permissions.canPublish);
+  for(let waited = 0; !canPublish() && waited < 2000; waited += 100){
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if(STATE.liveKitRoom !== room) return; // left or reconnected meanwhile
+  if(canPublish()){
+    try{ await lp.setMicrophoneEnabled(true); }
+    catch(e){ showToast(micErrorMessage(e), 'error'); }
+    return;
+  }
+  disconnectVoice();
+  if(STATE.activeRoom && STATE.activeRoom.id === roomId) await connectVoice(roomId);
+}
 
 // Turns a browser/LiveKit media error into something a person can act on.
 function micErrorMessage(err){
@@ -984,10 +1008,7 @@ function requestSeat(idx){
       renderMicGrid();
       if(hostMuted){ showToast('You took a seat, but the host has muted you', 'info'); return; }
       showToast("You're live! Say hi 👋", 'success');
-      if(STATE.liveKitRoom){
-        try{ await STATE.liveKitRoom.localParticipant.setMicrophoneEnabled(true); }
-        catch(e){ showToast(micErrorMessage(e), 'error'); }
-      }
+      await publishAfterSeat(STATE.activeRoom.id);
     }).catch(e=>{
       seat.requesting = false;
       renderMicGrid();
