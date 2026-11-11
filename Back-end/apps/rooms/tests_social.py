@@ -230,13 +230,14 @@ class ReviewFixTests(RoomBase):
 
 class SocketRevocationTests(RoomBase):
     def test_password_change_revokes_socket_tokens(self):
-        from asgiref.sync import async_to_sync
         from rest_framework_simplejwt.tokens import RefreshToken
 
-        from config.jwt_auth_middleware import get_user_from_token
+        # The plain function: its database_sync_to_async wrapper closes "old"
+        # connections, which kills TestCase's transaction on PostgreSQL.
+        from config.jwt_auth_middleware import user_from_token
 
         token = str(RefreshToken.for_user(self.alice).access_token)
-        self.assertEqual(async_to_sync(get_user_from_token)(token), self.alice)
+        self.assertEqual(user_from_token(token), self.alice)
         self.alice.set_password("An0ther-Strong-Pass!")
         self.alice.save()
-        self.assertFalse(async_to_sync(get_user_from_token)(token).is_authenticated)
+        self.assertFalse(user_from_token(token).is_authenticated)

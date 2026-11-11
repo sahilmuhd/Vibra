@@ -9,8 +9,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
 
-@database_sync_to_async
-def get_user_from_token(token):
+def user_from_token(token):
     from django.contrib.auth import get_user_model
 
     try:
@@ -24,6 +23,9 @@ def get_user_from_token(token):
     if api_settings.CHECK_REVOKE_TOKEN and access.get(api_settings.REVOKE_TOKEN_CLAIM) != get_md5_hash_password(user.password):
         return AnonymousUser()
     return user
+
+
+get_user_from_token = database_sync_to_async(user_from_token)
 
 
 class JWTAuthMiddleware(BaseMiddleware):
