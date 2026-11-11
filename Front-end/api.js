@@ -48,7 +48,8 @@ const Api = {
 
   // ---- low-level request helper: adds the auth header, retries once
   // after a token refresh if the access token expired (401) ----
-  async request(path, { method = "GET", body, auth = true, retry = true, keepalive = false } = {}) {
+  // Requests give up after `timeout` ms so a hung server can't freeze the UI.
+  async request(path, { method = "GET", body, auth = true, retry = true, keepalive = false, timeout = 30000 } = {}) {
     const headers = { "Content-Type": "application/json" };
     if (auth) {
       const token = this.getAccessToken();
@@ -56,22 +57,30 @@ const Api = {
     }
 
     let res;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
     try {
       res = await fetch(`${API_BASE}${path}`, {
         method,
         headers,
         keepalive,
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        ...(controller ? { signal: controller.signal } : {}),
       });
     } catch (e) {
-      const err = new Error("Can't reach the Vibra server. Check your connection.");
+      const timedOut = e && e.name === "AbortError";
+      const err = new Error(timedOut
+        ? "The Vibra server isn't responding. Please try again in a minute."
+        : "Can't reach the Vibra server. Check your connection.");
       err.status = 0;
       throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
 
     if (res.status === 401 && auth && retry) {
       const refreshed = await this.refreshAccessToken();
-      if (refreshed) return this.request(path, { method, body, auth, retry: false, keepalive });
+      if (refreshed) return this.request(path, { method, body, auth, retry: false, keepalive, timeout });
       // Refresh token missing/expired/revoked: the session is over.
       const hadSession = !!this.getAccessToken();
       this.clearTokens();
@@ -146,8 +155,10 @@ const Api = {
     return data.user;
   },
 
-  async me() {
-    return this.request("/auth/me/");
+  // `timeout` is overridable: the first call after page load may have to wait
+  // for a sleeping server to wake up.
+  async me({ timeout } = {}) {
+    return this.request("/auth/me/", timeout ? { timeout } : {});
   },
 
   logout() {

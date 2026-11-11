@@ -2855,28 +2855,40 @@ function bindOverlaysAndModals(){
   });
 }
 
+// Keeps the splash up until we know where to land, so a slow or sleeping
+// server shows "Connecting…" instead of a blank page.
 function initSplash(){
-  setTimeout(()=>{
-    document.getElementById('screen-splash').style.transition = 'opacity .4s ease';
-    document.getElementById('screen-splash').style.opacity = '0';
-    setTimeout(()=>{
-      document.getElementById('screen-splash').classList.add('hidden');
-      const showLogin = ()=> document.getElementById('screen-login').classList.remove('hidden');
-      if(Api.hasSession()){
-        // Validate the stored tokens with the server instead of trusting a cached user object.
-        Api.me().then(profile=>{
-          STATE.currentUser = profileToAccount(profile);
-          enterApp();
-        }).catch(e=>{
-          if(e.status === 0){ showToast(e.message, 'error'); }   // offline: keep tokens, retry on next load
-          else { Api.logout(); }
-          showLogin();
-        });
-      } else {
-        showLogin();
+  const splash = document.getElementById('screen-splash');
+  const status = document.getElementById('splash-status');
+  const showLogin = ()=> document.getElementById('screen-login').classList.remove('hidden');
+  const hideSplash = ()=> new Promise(resolve => {
+    splash.style.transition = 'opacity .4s ease';
+    splash.style.opacity = '0';
+    setTimeout(()=>{ splash.classList.add('hidden'); resolve(); }, 400);
+  });
+
+  setTimeout(async ()=>{
+    let profile = null, failure = null;
+    if(Api.hasSession()){
+      // Validate the stored tokens with the server instead of trusting a cached user object.
+      const slow = setTimeout(()=>{ status.textContent = 'Connecting to the server…'; }, 2500);
+      const slower = setTimeout(()=>{ status.textContent = 'Waking the server up, this can take up to a minute…'; }, 10000);
+      try{ profile = await Api.me({ timeout: 70000 }); }
+      catch(e){ failure = e; }
+      clearTimeout(slow); clearTimeout(slower);
+    }
+    await hideSplash();
+    if(profile){
+      STATE.currentUser = profileToAccount(profile);
+      enterApp();
+    } else {
+      if(failure){
+        if(failure.status === 0) showToast(failure.message, 'error');   // offline/unreachable: keep tokens, retry on next load
+        else Api.logout();
       }
-      maybeOpenResetFromUrl();
-    }, 400);
+      showLogin();
+    }
+    maybeOpenResetFromUrl();
   }, 2200);
 }
 
