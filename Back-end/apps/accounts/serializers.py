@@ -33,12 +33,15 @@ class ProfileSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(source="user_id", read_only=True)
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
+    # Relationship of the *viewer* to this profile (false when there is no request).
+    is_following = serializers.SerializerMethodField()
+    is_blocked = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
         fields = [
             "id", "username", "avatar_url", "bio", "country", "level",
-            "followers_count", "following_count", "created_at",
+            "followers_count", "following_count", "is_following", "is_blocked", "created_at",
         ]
         # `username` is read-only here: it is mirrored on auth.User (used for
         # login), and PATCHing only Profile.username silently desynced the two.
@@ -50,6 +53,19 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_following_count(self, obj):
         return obj.user.following_set.count()
+
+    def _viewer(self):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return user if user is not None and user.is_authenticated else None
+
+    def get_is_following(self, obj):
+        viewer = self._viewer()
+        return bool(viewer) and obj.user.follower_set.filter(follower=viewer).exists()
+
+    def get_is_blocked(self, obj):
+        viewer = self._viewer()
+        return bool(viewer) and viewer.blocks_made.filter(blocked_id=obj.user_id).exists()
 
 
 class SignupSerializer(serializers.Serializer):

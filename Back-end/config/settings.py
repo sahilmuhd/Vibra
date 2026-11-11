@@ -106,6 +106,8 @@ REST_FRAMEWORK = {
         "anon": "60/minute",
         "user": "300/minute",  # basic anti-spam floor
         "auth": "10/minute",   # login / signup / guest / password reset, per IP
+        "chat": "90/minute",   # room messages (list + send), per user
+        "report": "20/hour",
     },
     # Number of reverse proxies in front of the app (Render = 1) so throttling
     # keys on the real client IP instead of the proxy's.
@@ -175,6 +177,8 @@ RAZORPAY_WEBHOOK_SECRET = config("RAZORPAY_WEBHOOK_SECRET", default="")
 LIVEKIT_API_KEY = config("LIVEKIT_API_KEY", default="")
 LIVEKIT_API_SECRET = config("LIVEKIT_API_SECRET", default="")
 LIVEKIT_URL = config("LIVEKIT_URL", default="")
+# Push seat/mute/kick changes to live LiveKit sessions (needs all three values above).
+LIVEKIT_SYNC_ENABLED = bool(LIVEKIT_API_KEY and LIVEKIT_API_SECRET and LIVEKIT_URL)
 
 # --- Email (password reset) ---
 # Set EMAIL_BACKEND to 'django.core.mail.backends.smtp.EmailBackend' in production

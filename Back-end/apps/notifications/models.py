@@ -8,13 +8,17 @@ class Notification(models.Model):
     TYPE_FOLLOW = "follow"
     TYPE_GIFT = "gift"
     TYPE_MENTION = "mention"
+    TYPE_LIVE = "live"  # someone you follow started a room
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
     actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="+")
     type = models.CharField(max_length=20)
     text = models.CharField(max_length=200)
+    # Optional deep link target (e.g. the room that went live).
+    room = models.ForeignKey("rooms.Room", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "is_read"])]

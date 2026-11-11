@@ -39,3 +39,24 @@ class Follow(models.Model):
                 name="cannot_follow_self",
             )
         ]
+
+
+class Block(models.Model):
+    """`blocker` no longer sees `blocked`'s chat messages, and `blocked` cannot
+    join rooms that `blocker` hosts."""
+    blocker = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="blocks_made"
+    )
+    blocked = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="blocked_by"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("blocker", "blocked")
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(blocker=models.F("blocked")),
+                name="cannot_block_self",
+            )
+        ]

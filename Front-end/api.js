@@ -201,8 +201,16 @@ const Api = {
     return this.request(`/rooms/${roomId}/seats/${position}/mute/`, { method: "POST" });
   },
 
-  async forceMute(roomId, position) {
-    return this.request(`/rooms/${roomId}/seats/${position}/force-mute/`, { method: "POST" });
+  // muted=true: host/mod mutes a speaker (they cannot unmute themselves);
+  // muted=false: lifts that restriction.
+  async forceMute(roomId, position, muted = true) {
+    return this.request(`/rooms/${roomId}/seats/${position}/force-mute/`, { method: "POST", body: { muted } });
+  },
+
+  async setModerator(roomId, userId, isModerator) {
+    return this.request(`/rooms/${roomId}/moderators/`, {
+      method: "POST", body: { user_id: userId, is_moderator: isModerator },
+    });
   },
 
   async lockSeat(roomId, position) {
@@ -223,6 +231,48 @@ const Api = {
 
   async lowerHand(roomId) {
     return this.request(`/rooms/${roomId}/hand-raise/`, { method: "DELETE" });
+  },
+
+  // ---- safety ----
+  // reason: spam | abuse | harassment | inappropriate | other
+  async report({ roomId = null, userId = null, reason, details = "" }) {
+    return this.request(`/reports/`, {
+      method: "POST", body: { room_id: roomId, user_id: userId, reason, details },
+    });
+  },
+
+  async blockUser(userId) {
+    return this.request(`/auth/users/${userId}/block/`, { method: "POST" });
+  },
+
+  async unblockUser(userId) {
+    return this.request(`/auth/users/${userId}/block/`, { method: "DELETE" });
+  },
+
+  // ---- social ----
+  async getProfile(username) {
+    return this.request(`/auth/users/${encodeURIComponent(username)}/`);
+  },
+
+  async follow(userId) {
+    return this.request(`/auth/users/${userId}/follow/`, { method: "POST" });
+  },
+
+  async unfollow(userId) {
+    return this.request(`/auth/users/${userId}/follow/`, { method: "DELETE" });
+  },
+
+  // ---- notifications ----
+  async listNotifications() {
+    return this.request(`/notifications/`);
+  },
+
+  async unreadNotificationCount() {
+    return this.request(`/notifications/unread-count/`);
+  },
+
+  async markNotificationsRead() {
+    return this.request(`/notifications/read/`, { method: "POST" });
   },
 
   // ---- voice (LiveKit) ----

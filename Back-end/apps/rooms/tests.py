@@ -446,3 +446,67 @@ class HostModerationTests(RoomBase):
         self.assertEqual(r3.status_code, 200)
         self.assertFalse(HandRaise.objects.filter(room_id=self.rid, user=self.alice).exists())
 
+
+
+class VoiceSyncTests(RoomBase):
+    """Seat/mute/kick changes must be pushed to the live LiveKit session."""
+
+    def setUp(self):
+        super().setUp()
+        self.rid = self.create_room().data["id"]
+        self.alice_c.post(f"/api/rooms/{self.rid}/join/")
+        patcher = mock.patch("apps.rooms.views.voice_admin")
+        self.va = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def publish_calls(self):
+        return [(c.args[1], c.args[2]) for c in self.va.set_can_publish.call_args_list]
+
+    def test_taking_and_leaving_a_seat_grants_and_revokes_publish(self):
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/take/")
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/leave/")
+        self.assertEqual(self.publish_calls(), [(self.alice.id, True), (self.alice.id, False)])
+
+    def test_force_mute_revokes_and_unmute_restores(self):
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/take/")
+        self.va.reset_mock()
+        self.host_c.post(f"/api/rooms/{self.rid}/seats/1/force-mute/")
+        self.host_c.post(f"/api/rooms/{self.rid}/seats/1/force-mute/", {"muted": False}, format="json")
+        self.assertEqual(self.publish_calls(), [(self.alice.id, False), (self.alice.id, True)])
+
+    def test_lock_evicts_and_revokes(self):
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/take/")
+        self.va.reset_mock()
+        self.host_c.post(f"/api/rooms/{self.rid}/seats/1/lock/")
+        self.assertEqual(self.publish_calls(), [(self.alice.id, False)])
+
+    def test_kick_disconnects_and_end_room_closes_voice(self):
+        self.host_c.post(f"/api/rooms/{self.rid}/kick/", {"user_id": self.alice.id}, format="json")
+        self.assertEqual(self.va.disconnect_user.call_args.args[1], self.alice.id)
+        self.host_c.post(f"/api/rooms/{self.rid}/end/")
+        self.va.close_room.assert_called_once()
+
+    def test_leaving_the_room_while_seated_revokes(self):
+        self.alice_c.post(f"/api/rooms/{self.rid}/seats/1/take/")
+        self.va.reset_mock()
+        self.alice_c.post(f"/api/rooms/{self.rid}/leave/")
+        self.assertEqual(self.publish_calls(), [(self.alice.id, False)])
+
+
+class VoiceAdminTests(TestCase):
+    def test_disabled_is_a_noop_and_failures_are_swallowed(self):
+        from django.test import override_settings
+
+        from . import voice_admin
+
+        room = Room(voice_room_name="vibra-x")
+        with mock.patch.object(voice_admin, "_update_permission") as upd:
+            voice_admin.set_can_publish(room, 1, True)  # disabled in test settings
+            upd.assert_not_called()
+
+        async def boom(*a):
+            raise ConnectionError("livekit down")
+
+        with override_settings(LIVEKIT_SYNC_ENABLED=True):
+            with mock.patch.object(voice_admin, "_update_permission", boom):
+                voice_admin.set_can_publish(room, 1, True)  # must not raise

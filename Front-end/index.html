@@ -1016,6 +1016,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   .room-grid{ grid-template-columns:1fr 1fr 1fr; }
 }
 
+/* ---- Moderator badge ---- */
+.seat-mod{ position:absolute; top:-6px; right:4px; z-index:2; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-grad); color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.35); }
+.seat-mod svg{ width:12px; height:12px; }
+.notif-row[data-notif-room]{ cursor:pointer; }
+
 /* ---- Unified icon system (Lucide) ---- */
 i[data-lucide]{ display:inline-flex; }
 svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical-align:-0.18em; }
@@ -1607,7 +1612,7 @@ svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical
   <div class="modal-backdrop" id="room-more-modal">
     <div class="modal-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">Room options <button class="icon-btn" aria-label="Close" data-close-modal="room-more-modal"><i data-lucide="x"></i></button></div>
+      <div class="sheet-title"><span id="room-more-title">Room options</span> <button class="icon-btn" aria-label="Close" data-close-modal="room-more-modal"><i data-lucide="x"></i></button></div>
       <div id="room-more-list"></div>
     </div>
   </div>
@@ -1784,7 +1789,7 @@ const DATA = (function(){
 </script>
 
 <script src="https://unpkg.com/lucide@0.468.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
 <script src="api.js"></script>
 <script src="app.js"></script>
 </body>

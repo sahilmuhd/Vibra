@@ -39,9 +39,10 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 LIVEKIT_API_KEY = "test-key"
 LIVEKIT_API_SECRET = "test-secret-test-secret-test-secret-1234"
 LIVEKIT_URL = "wss://livekit.invalid"
+LIVEKIT_SYNC_ENABLED = False  # tests mock apps.rooms.voice_admin instead of calling LiveKit
 SECURE_SSL_REDIRECT = False
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,
-    "DEFAULT_THROTTLE_RATES": {"anon": "100000/minute", "user": "100000/minute", "auth": "100000/minute"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "100000/minute", "user": "100000/minute", "auth": "100000/minute", "chat": "100000/minute", "report": "100000/minute"},
 }
 LOGGING_CONFIG = None  # keep test output quiet

@@ -288,10 +288,11 @@ function enterApp(){
   document.getElementById('home-greeting').innerHTML = `${escapeHTML(g)}, ${escapeHTML(u.name.split(' ')[0])}<span>Welcome back to Vibra</span>`;
   if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; document.getElementById('desktop-right').style.display='block'; }
   const nb = document.getElementById('notif-badge');
-  if(nb && !VIBRA_CONFIG.DEMO_DATA) nb.style.display = 'none'; // static "3" in the markup is demo data
+  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); } // static "3" in the markup is demo data
   refreshWallet();
   renderHome();
   navigateTo('home'); // also refreshes the room list from the server
+  openDeepLinkedRoom();
 }
 
 /* ---------------------------- HOME / ROOMS (home.js, rooms.js) ----------- */
@@ -460,6 +461,7 @@ async function openRoomInner(roomId){
       const detail = await Api.joinRoom(roomId);
       room = apiRoomToLocal(detail);
       room._seats = detail.seats; // raw backend seat rows, converted below
+      room._moderatorIds = detail.moderator_ids || [];
     }catch(e){
       showToast(e.message || 'Could not join room', 'error');
       refreshApiRooms().then(renderHome);   // e.g. the room ended: drop it from the list
@@ -481,6 +483,7 @@ async function openRoomInner(roomId){
   document.getElementById('host-name').textContent = host.name;
   document.getElementById('host-ring').classList.add('speaking');
 
+  STATE.moderatorIds = (isApiRoom && room._moderatorIds) || [];
   if(isApiRoom){
     // Build the seat grid from real backend rows instead of the seeded mock.
     ROOM_SEATS_CACHE[roomId] = seatsFromDetail({ seats: room._seats });
@@ -554,6 +557,12 @@ function seatsFromDetail(detail){
   } : (s.is_locked ? { empty:true, locked:true } : { empty:true }));
 }
 
+function isApiActiveRoom(){ return !!STATE.activeRoom && typeof STATE.activeRoom.id === 'number'; }
+function isModeratorId(userId){ return (STATE.moderatorIds || []).includes(userId); }
+function amModerator(){ return !!STATE.currentUser && isModeratorId(STATE.currentUser.id); }
+// Host, or a moderator the host appointed (server enforces the same rules).
+function canModerate(){ return STATE.isHost || amModerator(); }
+
 // Seat/presence events only say "something changed"; re-fetching the snapshot
 // (debounced) keeps every client identical to the server without trusting
 // partial event payloads.
@@ -569,6 +578,7 @@ async function refreshActiveRoom(roomId){
     const speaking = new Map((ROOM_SEATS_CACHE[roomId] || []).filter(s=>!s.empty).map(s=>[s.userId, s.speaking]));
     ROOM_SEATS_CACHE[roomId] = seatsFromDetail(detail).map(s => s.empty ? s : Object.assign(s, { speaking: !!speaking.get(s.userId) }));
     STATE.mySeatIndex = ROOM_SEATS_CACHE[roomId].findIndex(s=>s.isMe);
+    STATE.moderatorIds = detail.moderator_ids || [];
     STATE.activeRoom.online = detail.online_count || 0;
     document.getElementById('room-online-count').textContent = `${STATE.activeRoom.online.toLocaleString()} Online`;
     renderMicGrid();
@@ -635,6 +645,11 @@ function connectRoomSocket(roomId){
         box.scrollTop = box.scrollHeight;
       }else if(event.event === 'seat_update' || event.event === 'seat_mute' || event.event === 'presence_update' || event.event === 'seat_lock'){
         scheduleRoomRefresh(roomId);
+      }else if(event.event === 'moderators_update'){
+        const wasMod = amModerator();
+        STATE.moderatorIds = event.moderator_ids || [];
+        if(amModerator() !== wasMod) showToast(amModerator() ? 'You are now a moderator' : 'You are no longer a moderator', 'info');
+        renderMicGrid();
       }else if(event.event === 'room_ended'){
         showToast('The host ended this room', 'info');
         leaveRoom();
@@ -720,8 +735,31 @@ async function connectVoice(roomId){
   }
   try{
     const { token, url } = await Api.getVoiceToken(roomId);
-    const room = new LivekitClient.Room();
+    const room = new LivekitClient.Room({
+      adaptiveStream: true,
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
 
+    // Real speaking indicator: LiveKit reports who is actually talking
+    // (participant identity = our user id), so the ring glows only for real audio.
+    room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      const talking = new Set(speakers.map(p => String(p.identity)));
+      const seats = currentSeats();
+      let changed = false;
+      seats.forEach(s => {
+        if(s.empty) return;
+        const now = talking.has(String(s.userId));
+        if(!!s.speaking !== now){ s.speaking = now; changed = true; }
+      });
+      if(changed) updateSeatSpeakingClasses(seats);
+    });
+    // Network trouble: tell the user instead of failing silently.
+    room.on(LivekitClient.RoomEvent.Reconnecting, () => showToast('Voice connection lost — reconnecting…', 'info'));
+    room.on(LivekitClient.RoomEvent.Reconnected, () => showToast('Voice reconnected', 'success'));
+    room.on(LivekitClient.RoomEvent.MediaDevicesError, (err) => {
+      console.error('Media device error', err);
+      showToast(micErrorMessage(err), 'error');
+    });
     room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
       if(track.kind !== LivekitClient.Track.Kind.Audio) return;
       const el = track.attach();
@@ -733,8 +771,13 @@ async function connectVoice(roomId){
     room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
       track.detach().forEach(el => el.remove());
     });
-    room.on(LivekitClient.RoomEvent.Disconnected, () => {
-      if(STATE.liveKitRoom === room) STATE.liveKitRoom = null;
+    room.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
+      if(STATE.liveKitRoom !== room) return;
+      STATE.liveKitRoom = null;
+      // Server-side removal (kick / room ended) or a dropped link we couldn't recover.
+      if(STATE.activeRoom && STATE.activeRoom.id === roomId && !voiceClosingOnPurpose){
+        showToast('Voice disconnected', 'error');
+      }
     });
 
     await room.connect(url, token);
@@ -751,11 +794,24 @@ async function connectVoice(roomId){
     showToast('Could not connect voice (mic/speaker will be visual only)', 'error');
   }
 }
+let voiceClosingOnPurpose = false;
+
+// Turns a browser/LiveKit media error into something a person can act on.
+function micErrorMessage(err){
+  const name = err && (err.name || (err.cause && err.cause.name)) || '';
+  if(name === 'NotAllowedError' || name === 'PermissionDeniedError') return 'Mic blocked — allow microphone access in your browser settings';
+  if(name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone found — plug one in and try again';
+  if(name === 'NotReadableError') return 'Your microphone is in use by another app';
+  return 'Could not use the microphone';
+}
+
 function disconnectVoice(){
+  voiceClosingOnPurpose = true;
   if(STATE.liveKitRoom){
     STATE.liveKitRoom.disconnect();
     STATE.liveKitRoom = null;
   }
+  setTimeout(()=>{ voiceClosingOnPurpose = false; }, 0);
   document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
 }
 
@@ -771,6 +827,7 @@ function seatHTML(p, idx){
     ? `<span class="seat-crown">${ic('crown')}</span>` : '';
   return `<div class="mic-seat ${p.muted?'muted':'speaking'} ${p.requesting?'requesting':''}" data-seat-idx="${idx}">
       ${crown}
+      ${p.userId && isModeratorId(p.userId) ? `<span class="seat-mod" title="Moderator">${ic('shield')}</span>` : ''}
       <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${p.level?`<span class="seat-level">Lv ${escapeHTML(p.level)}</span>`:''}</div>
       <span class="uname">${p.isMe? 'You' : escapeHTML(p.name)}</span>
       <span class="mic-status">${p.muted?ic('mic-off'):ic('mic')}</span>
@@ -820,14 +877,39 @@ function openSeatProfile(idx){
     } else if(VIBRA_CONFIG.DEMO_DATA){
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
     }  // real mode: no DM backend yet, so no dead "Message" button
-    if(STATE.isHost){
-      actions.push(`<button class="btn btn-glass" data-seat-action="force-mute" data-seat-idx="${idx}">${ic(seat.muted ? 'mic' : 'mic-off')} ${seat.muted ? 'Unmute' : 'Mute speaker'}</button>`);
+    const apiSeat = isApiActiveRoom() && !!seat.userId;
+    const targetIsHost = apiSeat && seat.userId === STATE.activeRoom.hostId;
+    const targetIsMod = apiSeat && isModeratorId(seat.userId);
+    // Moderators can act on listeners/speakers, but not on the host or other moderators.
+    if(canModerate() && !targetIsHost && (STATE.isHost || !targetIsMod)){
+      actions.push(`<button class="btn btn-glass" data-seat-action="force-mute" data-seat-idx="${idx}">${ic(seat.muted ? 'mic' : 'mic-off')} ${seat.muted ? 'Allow to speak' : 'Mute speaker'}</button>`);
       actions.push(`<button class="btn btn-glass" data-seat-action="lock-seat" data-seat-idx="${idx}">${ic(seat.locked ? 'lock-open' : 'lock')} ${seat.locked ? 'Unlock seat' : 'Lock seat'}</button>`);
-      actions.push(`<button class="btn btn-danger full" data-seat-action="remove" data-seat-idx="${idx}">Remove from mic</button>`);
+      actions.push(`<button class="btn btn-danger full" data-seat-action="remove" data-seat-idx="${idx}">${apiSeat ? 'Remove from room' : 'Remove from mic'}</button>`);
+    }
+    if(STATE.isHost && apiSeat){
+      actions.push(`<button class="btn btn-glass full" data-seat-action="toggle-mod" data-seat-idx="${idx}">${ic(targetIsMod ? 'shield-off' : 'shield')} ${targetIsMod ? 'Remove moderator' : 'Make moderator'}</button>`);
+    }
+    if(apiSeat){
+      actions.push(`<button class="btn btn-glass" id="seat-follow-btn" data-seat-action="follow" data-seat-idx="${idx}">${ic('user-plus')} Follow</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="report-user" data-seat-idx="${idx}">${ic('flag')} Report</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="block-user" data-seat-idx="${idx}">${ic('ban')} Block</button>`);
     }
   }
   document.getElementById('seat-profile-actions').innerHTML = actions.join('');
   openModal('seat-profile-modal');
+  if(!seat.isMe && isApiActiveRoom() && seat.userId) loadFollowState(seat.name);
+}
+
+// Fills in the real follow state for the seat profile's Follow button.
+function loadFollowState(username){
+  Api.getProfile(username).then(p => {
+    const btn = document.getElementById('seat-follow-btn');
+    if(btn) setFollowButton(btn, !!p.is_following);
+  }).catch(()=>{});
+}
+function setFollowButton(btn, following){
+  btn.dataset.following = following ? '1' : '';
+  btn.innerHTML = following ? `${ic('user-check')} Following` : `${ic('user-plus')} Follow`;
 }
 
 function requestSeat(idx){
@@ -853,7 +935,7 @@ function requestSeat(idx){
       showToast("You're live! Say hi 👋", 'success');
       if(STATE.liveKitRoom){
         try{ await STATE.liveKitRoom.localParticipant.setMicrophoneEnabled(true); }
-        catch(e){ showToast('Mic permission was blocked — check your browser settings', 'error'); }
+        catch(e){ showToast(micErrorMessage(e), 'error'); }
       }
     }).catch(e=>{
       seat.requesting = false;
@@ -1252,13 +1334,18 @@ function renderEmojiPicker(pickerId, inputId){
 
 /* ---- room-more sheet ---- */
 function renderRoomMoreSheet(){
+  document.getElementById('room-more-title').textContent = 'Room options';
   const list = document.getElementById('room-more-list');
   const rows = [];
+  const allLocked = isApiActiveRoom()
+    ? currentSeats().filter(s=>s.empty).every(s=>s.locked)
+    : STATE.seatsLocked;
   rows.push(`<div class="sheet-action-row" data-more-action="share"><div class="ic">${ic('share-2')}</div>Share room</div>`);
-  if(STATE.isHost){
+  if(canModerate()){
     rows.push(`<div class="sheet-action-row" data-more-action="mute-all"><div class="ic">${ic('mic-off')}</div>Mute everyone on mic</div>`);
-    rows.push(`<div class="sheet-action-row" data-more-action="lock-seats"><div class="ic">${ic(STATE.seatsLocked?'lock-open':'lock')}</div>${STATE.seatsLocked?'Unlock seats':'Lock seats'}</div>`);
-    rows.push(`<div class="sheet-action-row" data-more-action="settings"><div class="ic">${ic('settings')}</div>Room settings</div>`);
+    rows.push(`<div class="sheet-action-row" data-more-action="lock-seats"><div class="ic">${ic(allLocked?'lock-open':'lock')}</div>${allLocked?'Unlock empty seats':'Lock empty seats'}</div>`);
+  }
+  if(STATE.isHost){
     rows.push(`<div class="sheet-action-row danger" data-more-action="end-room"><div class="ic">${ic('octagon-x')}</div>End room for everyone</div>`);
   } else {
     rows.push(`<div class="sheet-action-row" data-more-action="report"><div class="ic">${ic('flag')}</div>Report room</div>`);
@@ -1267,23 +1354,102 @@ function renderRoomMoreSheet(){
   rows.push(`<div class="sheet-action-row danger" data-more-action="leave"><div class="ic">${ic('log-out')}</div>Leave room</div>`);
   list.innerHTML = rows.join('');
 }
+
+/* Report flow: re-uses the room-more sheet to pick a reason. */
+const REPORT_REASONS = [
+  ['harassment','Harassment or bullying','user-x'],
+  ['abuse','Hate speech or abuse','triangle-alert'],
+  ['inappropriate','Inappropriate content','eye-off'],
+  ['spam','Spam or scam','mail-warning'],
+  ['other','Something else','circle-help'],
+];
+let pendingReport = null;
+function openReportSheet(target, label){
+  pendingReport = target;
+  document.getElementById('room-more-title').textContent = `Report ${label}`;
+  document.getElementById('room-more-list').innerHTML = REPORT_REASONS.map(([key, text, icon]) =>
+    `<div class="sheet-action-row" data-more-action="report:${key}"><div class="ic">${ic(icon)}</div>${text}</div>`).join('');
+  openModal('room-more-modal');
+}
+
+function shareRoom(){
+  const room = STATE.activeRoom;
+  if(!room) return;
+  const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(room.id)}`;
+  if(navigator.share){
+    navigator.share({ title: room.name, text: `Join "${room.name}" on Vibra`, url }).catch(()=>{});
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(url)
+      .then(()=> showToast('Room link copied', 'success'))
+      .catch(()=> showToast(url, 'info'));
+  } else {
+    showToast(url, 'info');
+  }
+}
+
+// Opens the room from a shared ?room=<id> link once the user is signed in.
+function openDeepLinkedRoom(){
+  const raw = new URLSearchParams(location.search).get('room');
+  if(!raw) return;
+  history.replaceState(null, '', location.pathname);
+  const id = /^\d+$/.test(raw) ? Number(raw) : raw;
+  openRoom(id);
+}
+
 function handleRoomMoreAction(action){
   closeModal('room-more-modal');
-  if(action==='share'){ showToast('Room link copied to clipboard', 'success'); }
+  const api = isApiActiveRoom();
+  const roomId = STATE.activeRoom && STATE.activeRoom.id;
+  if(action.startsWith('report:')){
+    const target = pendingReport;
+    pendingReport = null;
+    if(!target) return;
+    Api.report({ roomId: target.roomId, userId: target.userId, reason: action.slice(7) })
+      .then(()=> showToast('Report sent — our team will review it', 'success'))
+      .catch(e => showToast(e.message || 'Could not send report', 'error'));
+  }
+  else if(action==='share'){ shareRoom(); }
   else if(action==='mute-all'){
-    currentSeats().forEach(s=>{ if(!s.empty && !s.isMe) s.muted = true; });
-    renderMicGrid();
-    appendChatMessage({who:'system', text:'The host muted everyone on mic', system:true});
-    showToast('Everyone muted', 'info');
+    if(api){
+      const targets = currentSeats().map((s,i)=>({s,i}))
+        .filter(x => !x.s.empty && !x.s.isMe && !x.s.muted && x.s.userId !== STATE.activeRoom.hostId && (STATE.isHost || !isModeratorId(x.s.userId)));
+      Promise.allSettled(targets.map(x => Api.forceMute(roomId, x.i, true))).then(()=>{
+        scheduleRoomRefresh(roomId);
+        showToast(targets.length ? 'Everyone on mic muted' : 'Nobody to mute', 'info');
+      });
+    } else {
+      currentSeats().forEach(s=>{ if(!s.empty && !s.isMe) s.muted = true; });
+      renderMicGrid();
+      appendChatMessage({who:'system', text:'The host muted everyone on mic', system:true});
+      showToast('Everyone muted', 'info');
+    }
   }
   else if(action==='lock-seats'){
-    STATE.seatsLocked = !STATE.seatsLocked;
-    showToast(STATE.seatsLocked ? 'Seats locked' : 'Seats unlocked', 'info');
+    if(api){
+      const empties = currentSeats().map((s,i)=>({s,i})).filter(x => x.s.empty);
+      const lockAll = empties.some(x => !x.s.locked);
+      const toggle = empties.filter(x => !!x.s.locked !== lockAll);
+      Promise.allSettled(toggle.map(x => Api.lockSeat(roomId, x.i))).then(()=>{
+        scheduleRoomRefresh(roomId);
+        showToast(lockAll ? 'Empty seats locked' : 'Seats unlocked', 'info');
+      });
+    } else {
+      STATE.seatsLocked = !STATE.seatsLocked;
+      showToast(STATE.seatsLocked ? 'Seats locked' : 'Seats unlocked', 'info');
+    }
   }
-  else if(action==='settings'){ showToast('Room settings (demo)', 'info'); }
   else if(action==='end-room'){ openModal('end-room-modal'); }
-  else if(action==='report'){ showToast('Report submitted — thanks for keeping Vibra safe', 'success'); }
-  else if(action==='block'){ showToast('Host blocked', 'success'); leaveRoom(); }
+  else if(action==='report'){
+    if(api) openReportSheet({ roomId, userId: STATE.activeRoom.hostId }, 'this room');
+    else showToast('Report submitted — thanks for keeping Vibra safe', 'success');
+  }
+  else if(action==='block'){
+    if(api && STATE.activeRoom.hostId){
+      Api.blockUser(STATE.activeRoom.hostId)
+        .then(()=>{ showToast('Host blocked', 'success'); leaveRoom(); })
+        .catch(e => showToast(e.message || 'Could not block host', 'error'));
+    } else { showToast('Host blocked', 'success'); leaveRoom(); }
+  }
   else if(action==='leave'){ leaveRoom(); }
 }
 
@@ -1633,19 +1799,49 @@ function sendDM(){
 }
 
 /* ---------------------------- NOTIFICATIONS -------------------------------- */
+function setNotifBadge(count){
+  const nb = document.getElementById('notif-badge');
+  if(!nb) return;
+  nb.textContent = count > 99 ? '99+' : String(count);
+  nb.style.display = count > 0 ? 'flex' : 'none';
+}
+let notifPollTimer = null;
+function refreshNotifBadge(){
+  if(VIBRA_CONFIG.DEMO_DATA || !STATE.currentUser) return;
+  Api.unreadNotificationCount().then(r => setNotifBadge(r.unread || 0)).catch(()=>{});
+}
+function startNotifPolling(){
+  clearInterval(notifPollTimer);
+  refreshNotifBadge();
+  notifPollTimer = setInterval(refreshNotifBadge, 60000);
+}
 function notifIconMeta(type){
   switch(type){
     case 'follow': return {ic:ic('user-plus'), bg:'rgba(183,33,255,0.15)'};
     case 'gift': return {ic:ic('gift'), bg:'rgba(255,200,87,0.15)'};
     case 'invite': return {ic:ic('megaphone'), bg:'rgba(47,230,216,0.15)'};
     case 'message': return {ic:ic('message-circle'), bg:'rgba(255,62,165,0.15)'};
+    case 'live': return {ic:ic('radio'), bg:'rgba(255,77,109,0.15)'};
     default: return {ic:ic('bell'), bg:'rgba(255,255,255,0.08)'};
   }
 }
 function renderNotifications(){
   const list = document.getElementById('notifications-list');
   if(!VIBRA_CONFIG.DEMO_DATA){
-    list.innerHTML = emptyStateHTML('🔔','No notifications yet','Follows, gifts and mentions will show up here.');
+    list.innerHTML = emptyStateHTML('⏳','Loading…','');
+    Api.listNotifications().then(rows => {
+      list.innerHTML = rows.length ? rows.map(n => {
+        const meta = notifIconMeta(n.type);
+        const when = new Date(n.created_at).toLocaleString([], {dateStyle:'medium', timeStyle:'short'});
+        return `<div class="notif-row ${n.is_read?'':'unread'}" ${n.room ? `data-notif-room="${Number(n.room)}"` : ''}>
+          <div class="ic" style="background:${meta.bg};">${meta.ic}</div>
+          <div><div class="t">${escapeHTML(n.text)}</div><div class="time">${escapeHTML(when)}</div></div>
+        </div>`;
+      }).join('') : emptyStateHTML('🔔','No notifications yet','Follows, gifts and live rooms from people you follow show up here.');
+      if(rows.some(n => !n.is_read)) Api.markNotificationsRead().then(()=> setNotifBadge(0)).catch(()=>{});
+    }).catch(e => {
+      list.innerHTML = emptyStateHTML('⚠️','Could not load notifications', escapeHTML(e.message || ''));
+    });
     return;
   }
   list.innerHTML = DATA.notifSeed.map(n=>{
@@ -1851,6 +2047,12 @@ function bindHome(){
     document.getElementById('trending-rooms').innerHTML = rooms.length ? rooms.map(roomCardHTML).join('') : emptyStateHTML('🔍','No rooms found','Try a different search term.');
   });
   document.getElementById('open-notifications').addEventListener('click', ()=>{ renderNotifications(); openOverlay('screen-notifications'); });
+  document.getElementById('notifications-list').addEventListener('click', e=>{
+    const row = e.target.closest('[data-notif-room]');
+    if(!row) return;
+    closeOverlay('screen-notifications');
+    openRoom(Number(row.dataset.notifRoom));
+  });
   document.getElementById('open-notifications-2').addEventListener('click', ()=>{ renderNotifications(); openOverlay('screen-notifications'); });
   document.getElementById('open-wallet-mini').addEventListener('click', openWallet);
   document.getElementById('open-profile-mini').addEventListener('click', ()=> navigateTo('profile'));
@@ -1956,13 +2158,13 @@ function bindRoomScreen(){
     else if(action === 'force-mute'){
       const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
       if(isApiRoom){
-        Api.forceMute(STATE.activeRoom.id, idx).then(() => {
-          const seat = currentSeats()[idx];
-          if(seat) seat.muted = true;
-          renderMicGrid();
+        const target = currentSeats()[idx];
+        const mute = !(target && target.muted);
+        Api.forceMute(STATE.activeRoom.id, idx, mute).then(() => {
+          scheduleRoomRefresh(STATE.activeRoom.id);
           closeModal('seat-profile-modal');
-          showToast('Speaker muted', 'info');
-        }).catch(e => showToast(e.message || 'Could not mute speaker', 'error'));
+          showToast(mute ? 'Speaker muted' : 'They can unmute themselves now', 'info');
+        }).catch(e => showToast(e.message || 'Could not update mute', 'error'));
       } else {
         const seat = currentSeats()[idx];
         if(seat) seat.muted = !seat.muted;
@@ -1987,6 +2189,40 @@ function bindRoomScreen(){
         showToast('Seat lock toggled', 'info');
       }
     }
+    else if(action === 'toggle-mod'){
+      const seat = currentSeats()[idx];
+      if(!seat || !seat.userId) return;
+      const on = !isModeratorId(seat.userId);
+      Api.setModerator(STATE.activeRoom.id, seat.userId, on).then(res => {
+        STATE.moderatorIds = res.moderator_ids || [];
+        renderMicGrid();
+        closeModal('seat-profile-modal');
+        showToast(on ? `${seat.name} is now a moderator` : `${seat.name} is no longer a moderator`, 'success');
+      }).catch(e => showToast(e.message || 'Could not update moderator', 'error'));
+    }
+    else if(action === 'follow'){
+      const seat = currentSeats()[idx];
+      if(!seat || !seat.userId) return;
+      const following = !!btn.dataset.following;
+      (following ? Api.unfollow(seat.userId) : Api.follow(seat.userId)).then(() => {
+        setFollowButton(btn, !following);
+        showToast(following ? `Unfollowed ${seat.name}` : `Following ${seat.name}`, 'success');
+      }).catch(e => showToast(e.message || 'Could not update follow', 'error'));
+    }
+    else if(action === 'report-user'){
+      const seat = currentSeats()[idx];
+      if(!seat || !seat.userId) return;
+      closeModal('seat-profile-modal');
+      openReportSheet({ roomId: STATE.activeRoom.id, userId: seat.userId }, seat.name);
+    }
+    else if(action === 'block-user'){
+      const seat = currentSeats()[idx];
+      if(!seat || !seat.userId) return;
+      Api.blockUser(seat.userId).then(() => {
+        closeModal('seat-profile-modal');
+        showToast(`${seat.name} blocked — you won't see their messages`, 'success');
+      }).catch(e => showToast(e.message || 'Could not block user', 'error'));
+    }
     else if(action === 'remove'){
       const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
       const seat = currentSeats()[idx];
@@ -1994,7 +2230,7 @@ function bindRoomScreen(){
         Api.kickParticipant(STATE.activeRoom.id, seat.userId).then(() => {
           scheduleRoomRefresh(STATE.activeRoom.id);
           closeModal('seat-profile-modal');
-          showToast('User removed from mic', 'info');
+          showToast('User removed from the room', 'info');
         }).catch(e => showToast(e.message || 'Could not remove user', 'error'));
       } else {
         removeFromSeat(idx);

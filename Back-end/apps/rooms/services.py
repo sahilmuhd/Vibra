@@ -1,6 +1,6 @@
 from django.db import transaction
 
-from .models import HandRaise, RoomParticipant, Seat
+from .models import HandRaise, RoomModerator, RoomParticipant, Seat
 
 
 def user_in_room(room, user) -> bool:
@@ -25,3 +25,16 @@ def remove_user_from_room(room, user_id):
     HandRaise.objects.filter(room=room, user_id=user_id).delete()
     removed, _ = RoomParticipant.objects.filter(room=room, user_id=user_id).delete()
     return freed, bool(removed)
+
+
+def is_host(room, user) -> bool:
+    return user.is_staff or room.host_id == user.id
+
+
+def is_moderator(room, user) -> bool:
+    return RoomModerator.objects.filter(room=room, user=user).exists()
+
+
+def can_moderate(room, user) -> bool:
+    """Host, staff and appointed moderators may mute/lock/kick."""
+    return is_host(room, user) or is_moderator(room, user)

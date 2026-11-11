@@ -112,3 +112,33 @@ class GiftEvent(models.Model):
     gift = models.ForeignKey(Gift, on_delete=models.PROTECT)
     combo = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class RoomModerator(models.Model):
+    """Trusted helpers the host appoints. They can mute, lock seats and kick
+    ordinary participants, but cannot end the room or act on the host/other mods."""
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="moderators")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("room", "user")
+
+
+class Report(models.Model):
+    REASON_CHOICES = [
+        ("spam", "Spam"), ("abuse", "Abuse or hate"), ("harassment", "Harassment"),
+        ("inappropriate", "Inappropriate content"), ("other", "Other"),
+    ]
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reports_made")
+    room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True, related_name="reports")
+    reported_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="reports_received"
+    )
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES)
+    details = models.CharField(max_length=500, blank=True)
+    is_resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

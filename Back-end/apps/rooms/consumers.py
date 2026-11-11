@@ -136,6 +136,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if event["payload"].get("user_id") == self.user.id:
             await self.close(code=4003)
 
+    async def moderators_update(self, event):
+        await self.send_json({"event": "moderators_update", **event["payload"]})
+
     async def message_new(self, event):
         await self.send_json({"event": "message_new", **event["payload"]})
 

@@ -35,9 +35,13 @@ class SeatSerializer(serializers.ModelSerializer):
 
 class RoomDetailSerializer(RoomListSerializer):
     seats = SeatSerializer(many=True, read_only=True)
+    moderator_ids = serializers.SerializerMethodField()
 
     class Meta(RoomListSerializer.Meta):
-        fields = RoomListSerializer.Meta.fields + ["seats", "voice_room_name"]
+        fields = RoomListSerializer.Meta.fields + ["seats", "voice_room_name", "moderator_ids"]
+
+    def get_moderator_ids(self, obj):
+        return [m.user_id for m in obj.moderators.all()]
 
 
 class MessageSerializer(serializers.ModelSerializer):

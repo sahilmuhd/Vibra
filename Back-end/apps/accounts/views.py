@@ -9,15 +9,21 @@ from django.core.cache import cache
 from django.db import transaction
 from django.core.mail import send_mail
 from django.conf import settings
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import Profile
+from apps.notifications.services import notify
+from apps.notifications.models import Notification
+
+from .models import Block, Follow, Profile
 from .profiles import ensure_profile
-from .serializers import ProfileSerializer, SignupSerializer, VibraTokenObtainPairSerializer
+from .serializers import (
+    ProfileSerializer, PublicUserSerializer, SignupSerializer, VibraTokenObtainPairSerializer,
+)
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -172,3 +178,57 @@ class PasswordResetConfirmView(APIView):
         cache.delete(cache_key)  # one-time use
 
         return Response({"detail": "Password updated successfully. You can now log in."})
+
+
+def _target_user(user_id):
+    return get_object_or_404(User.objects.select_related("profile"), id=user_id)
+
+
+class FollowView(APIView):
+    """POST follows a user, DELETE unfollows. Both are idempotent."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, user_id):
+        target = _target_user(user_id)
+        if target.id == request.user.id:
+            return Response({"detail": "You cannot follow yourself."}, status=status.HTTP_400_BAD_REQUEST)
+        if Block.objects.filter(blocker=target, blocked=request.user).exists():
+            return Response({"detail": "You cannot follow this user."}, status=status.HTTP_403_FORBIDDEN)
+        _, created = Follow.objects.get_or_create(follower=request.user, following=target)
+        if created:
+            notify(target, request.user, Notification.TYPE_FOLLOW,
+                   f"{ensure_profile(request.user).username} started following you")
+        return Response({"following": True, "followers_count": target.follower_set.count()})
+
+    def delete(self, request, user_id):
+        target = _target_user(user_id)
+        Follow.objects.filter(follower=request.user, following=target).delete()
+        return Response({"following": False, "followers_count": target.follower_set.count()})
+
+
+class BlockView(APIView):
+    """POST blocks a user (and removes follows both ways), DELETE unblocks."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, user_id):
+        target = _target_user(user_id)
+        if target.id == request.user.id:
+            return Response({"detail": "You cannot block yourself."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            Block.objects.get_or_create(blocker=request.user, blocked=target)
+            Follow.objects.filter(follower=request.user, following=target).delete()
+            Follow.objects.filter(follower=target, following=request.user).delete()
+        return Response({"blocked": True})
+
+    def delete(self, request, user_id):
+        Block.objects.filter(blocker=request.user, blocked_id=user_id).delete()
+        return Response({"blocked": False})
+
+
+class BlockListView(generics.ListAPIView):
+    """Users the caller has blocked (for the settings screen)."""
+    serializer_class = PublicUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return User.objects.filter(blocked_by__blocker=self.request.user).select_related("profile")

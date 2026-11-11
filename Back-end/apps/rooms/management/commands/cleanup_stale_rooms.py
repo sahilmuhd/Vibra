@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from apps.rooms import voice_admin
 from apps.rooms.models import HandRaise, Room, RoomParticipant, Seat
 from apps.rooms.realtime import broadcast_to_room
 from apps.rooms.services import remove_user_from_room
@@ -30,6 +31,8 @@ class Command(BaseCommand):
             freed, removed = remove_user_from_room(participant.room, participant.user_id)
             for position in freed:
                 broadcast_to_room(participant.room_id, "seat.update", {"position": position, "action": "left"})
+            if freed:
+                voice_admin.set_can_publish(participant.room, participant.user_id, False)
             if removed:
                 dropped += 1
                 broadcast_to_room(participant.room_id, "presence.update", {

@@ -3,6 +3,9 @@ from django.db import transaction
 from django.db.models import Sum
 from rest_framework.exceptions import ValidationError
 
+from apps.notifications.models import Notification
+from apps.notifications.services import notify
+
 from .models import PaymentOrder, Transaction
 
 
@@ -47,6 +50,8 @@ def send_gift(*, sender, recipient, gift, room, combo=1):
         user=recipient, type=Transaction.TYPE_GIFT_RECEIVED, amount=cost,
         label=f"Received {gift.name} x{combo} from {sender}", related_gift_event=event,
     )
+    notify(recipient, sender, Notification.TYPE_GIFT,
+           f"{sender} sent you {gift.name}" + (f" x{combo}" if combo > 1 else ""), room=room)
     return event
 
 
