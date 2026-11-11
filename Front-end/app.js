@@ -224,6 +224,11 @@ function setFieldError(fieldId, isError){
   const el = document.getElementById(fieldId);
   if(el) el.classList.toggle('error', isError);
 }
+// Editing a field clears its error until the next submit re-checks it.
+document.addEventListener('input', e=>{
+  const field = e.target.closest && e.target.closest('.field.error');
+  if(field) field.classList.remove('error');
+});
 
 function validateLogin(){
   let ok = true;
