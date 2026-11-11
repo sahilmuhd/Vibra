@@ -1,0 +1,8 @@
+[Unit]
+Description=Vibra: drop stale room participants and end empty rooms
+
+[Service]
+Type=oneshot
+User=vibra
+WorkingDirectory=/srv/vibra/Back-end
+ExecStart=/srv/vibra/venv/bin/python manage.py cleanup_stale_rooms

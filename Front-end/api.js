@@ -12,8 +12,7 @@
    ========================================================================== */
 
 // ---- configuration -------------------------------------------------------
-// Defaults keep the previous behaviour (localhost in dev, the Render API in
-// production). To override WITHOUT editing this file, define
+// Defaults: localhost in dev, the Hostinger VPS API (deploy/) in production. To override WITHOUT editing this file, define
 //   <script>window.__VIBRA_CONFIG__ = { API_BASE: 'https://api.example.com/api' }</script>
 // before api.js. DEMO_DATA=true re-enables the old mock rooms/users/wallet so
 // the UI can still be demoed offline; it must stay false for real use.
@@ -22,7 +21,7 @@ const VIBRA_CONFIG = Object.assign({
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
     window.location.protocol === 'file:'
-  ) ? 'http://localhost:8000/api' : 'https://vibra-backend-aqgg.onrender.com/api',
+  ) ? 'http://localhost:8000/api' : 'https://api.vibra.sahilmuhd.com/api',
   DEMO_DATA: false,
 }, window.__VIBRA_CONFIG__ || {});
 const API_BASE = VIBRA_CONFIG.API_BASE;

@@ -1,0 +1,7 @@
+[Unit]
+Description=Vibra: nightly PostgreSQL backup (keeps 14 days)
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/bin/sh -c 'mkdir -p /var/backups/vibra && pg_dump -Fc vibra > /var/backups/vibra/vibra-$(date +%%F).dump && find /var/backups/vibra -name "vibra-*.dump" -mtime +14 -delete'

@@ -1,0 +1,21 @@
+[Unit]
+Description=Vibra API (Django + Channels on daphne)
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=vibra
+Group=vibra
+WorkingDirectory=/srv/vibra/Back-end
+# Settings come from /srv/vibra/Back-end/.env (python-decouple).
+ExecStart=/srv/vibra/venv/bin/daphne -b 127.0.0.1 -p 8010 --proxy-headers config.asgi:application
+Restart=always
+RestartSec=3
+# Keep a runaway process from starving the other sites on this VPS.
+MemoryMax=700M
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
