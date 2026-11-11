@@ -641,6 +641,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .seat-profile-actions{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:4px 4px 6px; }
 .seat-profile-actions .btn{ font-size:13px; }
 .seat-profile-actions .btn.full{ grid-column:1 / -1; }
+.seat-actions-label{ grid-column:1 / -1; margin-top:8px; font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--text-tertiary); }
+.seat-actions-quiet{ grid-column:1 / -1; display:flex; justify-content:center; gap:18px; margin-top:4px; }
+.seat-actions-quiet .btn{ padding:8px 10px; font-size:12.5px; color:var(--text-secondary); background:none; border:none; box-shadow:none; }
+.seat-actions-quiet .btn:hover{ color:var(--text-primary); }
 
 /* requests modal */
 .request-row{ display:flex; align-items:center; gap:12px; padding:11px 4px; border-bottom:1px solid var(--border-glass); }
@@ -890,6 +894,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .dm-msg.them{ align-self:flex-start; background:var(--surface-glass-strong); border:1px solid var(--border-glass); border-bottom-left-radius:5px; }
 .dm-msg.me{ align-self:flex-end; background:var(--accent-grad); color:#fff; border-bottom-right-radius:5px; }
 .dm-time{ font-size:10px; color:var(--text-tertiary); margin-top:4px; }
+.dm-msg.me .dm-time{ color:rgba(255,255,255,0.78); }
 
 /* ==========================================================================
    NOTIFICATIONS
@@ -950,6 +955,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   .bottom-nav{ display:none; }
   #app-shell{ padding-bottom:0; }
   .desktop-layout{ display:grid; grid-template-columns:260px 1fr 300px; min-height:100vh; align-items:start; }
+  /* The right rail only exists in demo mode; without it the main column takes the space. */
+  .desktop-layout:not(.has-rail){ grid-template-columns:260px 1fr; }
   .desktop-sidebar{
     position:sticky; top:0; height:100vh;
     padding:28px 16px 24px;
@@ -1010,7 +1017,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 @media (min-width:1080px) and (max-width:1339px){
   .desktop-layout{ grid-template-columns:240px 1fr; }
-  .desktop-right{ display:none; }
+  .desktop-right{ display:none !important; }
+}
+@media (max-width:1079px){
+  .desktop-right{ display:none !important; }
 }
 @media (min-width:1400px){
   .room-grid{ grid-template-columns:1fr 1fr 1fr; }
@@ -1029,9 +1039,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .dm-blocked{ text-align:center; color:var(--text-tertiary); font-size:12.5px; padding:10px; }
 
 /* ---- Moderator badge ---- */
-.seat-mod{ position:absolute; top:-6px; right:4px; z-index:2; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-grad); color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.35); }
+.seat-mod{ position:absolute; top:-6px; left:-6px; z-index:2; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-grad); color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.35); }
 .seat-mod svg{ width:12px; height:12px; }
-.notif-row[data-notif-room]{ cursor:pointer; }
+.notif-row[data-notif-room], .notif-row[data-notif-user]{ cursor:pointer; }
 
 /* ---- Unified icon system (Lucide) ---- */
 i[data-lucide]{ display:inline-flex; }
@@ -1071,8 +1081,9 @@ svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical
 .seat-gift-pill svg{ width:10px; height:10px; }
 .room-badge{ display:inline-flex; align-items:center; gap:5px; }
 .room-badge svg{ width:11px; height:11px; }
-.live-dot{ width:7px; height:7px; border-radius:50%; background:#ff4d6d; box-shadow:0 0 0 0 rgba(255,77,109,.7); animation:livePulse 1.6s infinite; flex-shrink:0; }
-@keyframes livePulse{ 70%{ box-shadow:0 0 0 7px rgba(255,77,109,0); } 100%{ box-shadow:0 0 0 0 rgba(255,77,109,0); } }
+.badge-live-dot{ width:7px; height:7px; border-radius:50%; background:var(--danger); flex-shrink:0; animation:badgePulse 1.6s infinite; }
+@keyframes badgePulse{ 0%{ box-shadow:0 0 0 0 rgba(255,92,108,.55); } 100%{ box-shadow:0 0 0 6px rgba(255,92,108,0); } }
+@media (prefers-reduced-motion: reduce){ .badge-live-dot{ animation:none; } }
 .r-approve, .r-decline{ display:inline-flex; align-items:center; justify-content:center; }
 .r-approve svg, .r-decline svg{ width:18px; height:18px; }
 .toast{ display:flex; align-items:center; gap:8px; }
@@ -1468,8 +1479,8 @@ svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical
       <div class="mention-suggestions" id="mention-suggestions"></div>
       <div class="chat-input-bar">
         <button class="icon-btn" id="emoji-toggle" aria-label="Open emoji picker"><i data-lucide="smile"></i></button>
-        <div class="input-wrap"><input type="text" id="chat-input" placeholder="Say something nice..." maxlength="200"></div>
-        <span class="char-counter" id="chat-char-counter">0/200</span>
+        <div class="input-wrap"><input type="text" id="chat-input" placeholder="Say something…" maxlength="200"></div>
+        <span class="char-counter" id="chat-char-counter" hidden>0/200</span>
         <button class="icon-btn" id="gift-open-btn" aria-label="Send a gift"><i data-lucide="gift"></i></button>
         <button class="send-btn" id="chat-send"><i data-lucide="send-horizontal"></i></button>
       </div>

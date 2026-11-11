@@ -286,7 +286,7 @@ function enterApp(){
   const hour = new Date().getHours();
   const g = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   document.getElementById('home-greeting').innerHTML = `${escapeHTML(g)}, ${escapeHTML(u.name.split(' ')[0])}<span>Welcome back to Vibra</span>`;
-  if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; document.getElementById('desktop-right').style.display='block'; }
+  if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; if(VIBRA_CONFIG.DEMO_DATA){ document.getElementById('desktop-right').style.display='block'; document.querySelector('.desktop-layout').classList.add('has-rail'); } }
   const nb = document.getElementById('notif-badge');
   if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); loadBlocks(); } // static "3" in the markup is demo data
   refreshWallet();
@@ -347,7 +347,7 @@ function roomCardHTML(room){
   <div class="room-card" data-room-id="${escapeAttr(room.id)}" style="--rgrad:${room.grad}">
     <div style="position:absolute; inset:0; background:${room.grad}; opacity:0.9; z-index:0;"></div>
     <div class="room-card-top">
-      <span class="room-badge ${room.live?'live':''}">${room.live? '<span class="live-dot"></span>LIVE' : ic('pause')+'OFFLINE'}</span>
+      <span class="room-badge ${room.live?'live':''}">${room.live? '<span class="badge-live-dot"></span>LIVE' : ic('pause')+'OFFLINE'}</span>
       <span class="room-cat">${escapeHTML(room.category)}</span>
     </div>
     <div class="room-name">${escapeHTML(room.name)}</div>
@@ -863,8 +863,7 @@ function seatHTML(p, idx){
     ? `<span class="seat-crown">${ic('crown')}</span>` : '';
   return `<div class="mic-seat ${p.muted?'muted':'speaking'} ${p.requesting?'requesting':''}" data-seat-idx="${idx}">
       ${crown}
-      ${p.userId && isModeratorId(p.userId) ? `<span class="seat-mod" title="Moderator">${ic('shield')}</span>` : ''}
-      <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${p.level?`<span class="seat-level">Lv ${escapeHTML(p.level)}</span>`:''}</div>
+      <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${p.userId && isModeratorId(p.userId) ? `<span class="seat-mod" title="Moderator" aria-label="Moderator">${ic('shield')}</span>` : ''}${p.level?`<span class="seat-level">Lv ${escapeHTML(p.level)}</span>`:''}</div>
       <span class="uname">${p.isMe? 'You' : escapeHTML(p.name)}</span>
       <span class="mic-status">${p.muted?ic('mic-off'):ic('mic')}</span>
       ${p.giftsReceived?`<span class="seat-gift-pill">${ic('coins')}×${p.giftsReceived}</span>`:''}
@@ -906,31 +905,43 @@ function openSeatProfile(idx){
   if(seat.isMe){
     actions.push(`<button class="btn btn-glass full" data-seat-action="leave-seat">Step down from mic</button>`);
   } else {
-    actions.push(`<button class="btn btn-primary" data-seat-action="gift" data-seat-idx="${idx}">${ic('gift')} Send Gift</button>`);
+    actions.push(`<button class="btn btn-primary" data-seat-action="gift" data-seat-idx="${idx}">${ic('gift')} Send gift</button>`);
+    // Demo seats use the mock profile/DM screens; real seats get theirs below.
     if(seat.srcUserId){
-      actions.push(`<button class="btn btn-glass" data-seat-action="profile" data-seat-idx="${idx}">View Profile</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="profile" data-seat-idx="${idx}">View profile</button>`);
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
     } else if(VIBRA_CONFIG.DEMO_DATA){
       actions.push(`<button class="btn btn-glass" data-seat-action="message" data-seat-idx="${idx}">Message</button>`);
-    }  // real mode: no DM backend yet, so no dead "Message" button
+    }
     const apiSeat = isApiActiveRoom() && !!seat.userId;
     const targetIsHost = apiSeat && seat.userId === STATE.activeRoom.hostId;
     const targetIsMod = apiSeat && isModeratorId(seat.userId);
+    if(apiSeat){
+      actions.push(`<button class="btn btn-glass" id="seat-follow-btn" data-seat-action="follow" data-seat-idx="${idx}">${ic('user-plus')} Follow</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="api-message" data-seat-idx="${idx}">${ic('message-circle')} Message</button>`);
+      actions.push(`<button class="btn btn-glass" data-seat-action="api-profile" data-seat-idx="${idx}">${ic('user-round')} View profile</button>`);
+    }
     // Moderators can act on listeners/speakers, but not on the host or other moderators.
-    if(canModerate() && !targetIsHost && (STATE.isHost || !targetIsMod)){
+    const canModerateTarget = canModerate() && !targetIsHost && (STATE.isHost || !targetIsMod);
+    const canPromote = STATE.isHost && apiSeat;
+    if(canModerateTarget || canPromote){
+      actions.push(`<div class="seat-actions-label">Moderation</div>`);
+    }
+    if(canModerateTarget){
       actions.push(`<button class="btn btn-glass" data-seat-action="force-mute" data-seat-idx="${idx}">${ic(seat.muted ? 'mic' : 'mic-off')} ${seat.muted ? 'Allow to speak' : 'Mute speaker'}</button>`);
       actions.push(`<button class="btn btn-glass" data-seat-action="lock-seat" data-seat-idx="${idx}">${ic(seat.locked ? 'lock-open' : 'lock')} ${seat.locked ? 'Unlock seat' : 'Lock seat'}</button>`);
-      actions.push(`<button class="btn btn-danger full" data-seat-action="remove" data-seat-idx="${idx}">${apiSeat ? 'Remove from room' : 'Remove from mic'}</button>`);
     }
-    if(STATE.isHost && apiSeat){
+    if(canPromote){
       actions.push(`<button class="btn btn-glass full" data-seat-action="toggle-mod" data-seat-idx="${idx}">${ic(targetIsMod ? 'shield-off' : 'shield')} ${targetIsMod ? 'Remove moderator' : 'Make moderator'}</button>`);
     }
+    if(canModerateTarget){
+      actions.push(`<button class="btn btn-danger full" data-seat-action="remove" data-seat-idx="${idx}">${apiSeat ? 'Remove from room' : 'Remove from mic'}</button>`);
+    }
     if(apiSeat){
-      actions.push(`<button class="btn btn-glass" data-seat-action="api-profile" data-seat-idx="${idx}">${ic('user-round')} Profile</button>`);
-      actions.push(`<button class="btn btn-glass" data-seat-action="api-message" data-seat-idx="${idx}">${ic('message-circle')} Message</button>`);
-      actions.push(`<button class="btn btn-glass" id="seat-follow-btn" data-seat-action="follow" data-seat-idx="${idx}">${ic('user-plus')} Follow</button>`);
-      actions.push(`<button class="btn btn-glass" data-seat-action="report-user" data-seat-idx="${idx}">${ic('flag')} Report</button>`);
-      actions.push(`<button class="btn btn-glass" data-seat-action="block-user" data-seat-idx="${idx}">${ic('ban')} Block</button>`);
+      actions.push(`<div class="seat-actions-quiet">
+        <button class="btn" data-seat-action="report-user" data-seat-idx="${idx}">${ic('flag')} Report</button>
+        <button class="btn" data-seat-action="block-user" data-seat-idx="${idx}">${ic('ban')} Block</button>
+      </div>`);
     }
   }
   document.getElementById('seat-profile-actions').innerHTML = actions.join('');
@@ -1387,6 +1398,7 @@ function updateCharCounter(){
   const counter = document.getElementById('chat-char-counter');
   if(!input || !counter) return;
   const len = input.value.length;
+  counter.hidden = len === 0;
   counter.textContent = `${len}/200`;
   counter.classList.toggle('warn', len >= 180);
 }
@@ -2048,7 +2060,7 @@ function loadBlocks(){
 function apiProfileHTML(p, isSelf){
   const grad = DATA.gradients[(p.level || 1) % DATA.gradients.length];
   const live = p.live_room
-    ? `<div class="live-now-pill" data-join-live="${Number(p.live_room.id)}"><span class="live-dot"></span>Live now: ${escapeHTML(p.live_room.name)}</div>`
+    ? `<div class="live-now-pill" data-join-live="${Number(p.live_room.id)}"><span class="badge-live-dot"></span>Live now: ${escapeHTML(p.live_room.name)}</div>`
     : '';
   const actions = isSelf
     ? `<div class="profile-btn-row"><button class="btn btn-glass" style="flex:1;" data-open-settings>Edit Profile</button></div>`
@@ -2064,7 +2076,7 @@ function apiProfileHTML(p, isSelf){
     <div class="profile-cover" style="background:${grad};"></div>
     <div class="profile-main">
       <img class="avatar" src="${imgSrc(p.avatar_url)}">
-      <div class="profile-name-row"><h2>${escapeHTML(p.username)}</h2><span class="level-badge">Lvl ${Number(p.level || 1)}</span></div>
+      <div class="profile-name-row"><h2>${escapeHTML(p.username)}</h2><span class="level-badge">Lv ${Number(p.level || 1)}</span></div>
       <div class="profile-username">@${escapeHTML(p.username)}</div>
       ${p.bio ? `<div class="profile-bio">${escapeHTML(p.bio)}</div>` : '<div style="height:12px"></div>'}
       ${p.country ? `<div class="profile-country">${ic('map-pin')} ${escapeHTML(p.country)}</div>` : ''}
@@ -2130,6 +2142,18 @@ function bindApiProfileActions(){
 }
 
 /* ---------------------------- NOTIFICATIONS -------------------------------- */
+// "Just now", "5m", "3h", "Yesterday", then a short date.
+function relativeTime(iso){
+  const then = new Date(iso);
+  const mins = Math.round((Date.now() - then.getTime()) / 60000);
+  if(mins < 1) return 'Just now';
+  if(mins < 60) return `${mins}m`;
+  const hours = Math.round(mins / 60);
+  if(hours < 24) return `${hours}h`;
+  if(hours < 48) return 'Yesterday';
+  return then.toLocaleDateString([], {month:'short', day:'numeric'});
+}
+
 function setNotifBadge(count){
   const nb = document.getElementById('notif-badge');
   if(!nb) return;
@@ -2160,8 +2184,10 @@ function renderNotifications(){
     Api.listNotifications().then(rows => {
       list.innerHTML = rows.length ? rows.map(n => {
         const meta = notifIconMeta(n.type);
-        const when = new Date(n.created_at).toLocaleString([], {dateStyle:'medium', timeStyle:'short'});
-        return `<div class="notif-row ${n.is_read?'':'unread'}" ${n.room ? `data-notif-room="${Number(n.room)}"` : ''}>
+        const when = relativeTime(n.created_at);
+        const target = n.room ? `data-notif-room="${Number(n.room)}"`
+          : (n.actor ? `data-notif-user="${escapeAttr(n.actor.username)}"` : '');
+        return `<div class="notif-row ${n.is_read?'':'unread'}" ${target}>
           <div class="ic" style="background:${meta.bg};">${meta.ic}</div>
           <div><div class="t">${escapeHTML(n.text)}</div><div class="time">${escapeHTML(when)}</div></div>
         </div>`;
@@ -2378,10 +2404,10 @@ function bindHome(){
   });
   document.getElementById('open-notifications').addEventListener('click', ()=>{ renderNotifications(); openOverlay('screen-notifications'); });
   document.getElementById('notifications-list').addEventListener('click', e=>{
-    const row = e.target.closest('[data-notif-room]');
-    if(!row) return;
-    closeOverlay('screen-notifications');
-    openRoom(Number(row.dataset.notifRoom));
+    const room = e.target.closest('[data-notif-room]');
+    if(room){ closeOverlay('screen-notifications'); openRoom(Number(room.dataset.notifRoom)); return; }
+    const user = e.target.closest('[data-notif-user]');
+    if(user){ closeOverlay('screen-notifications'); openApiProfile(user.dataset.notifUser); }
   });
   document.getElementById('open-notifications-2').addEventListener('click', ()=>{ renderNotifications(); openOverlay('screen-notifications'); });
   document.getElementById('open-wallet-mini').addEventListener('click', openWallet);
