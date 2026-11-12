@@ -2379,8 +2379,6 @@ function bindAuth(){
   bindPasswordReset();
   // These buttons used to "log in" as a hard-coded user with no server session
   // (every API call then failed with 401). Real OAuth is not part of the MVP.
-  document.getElementById('google-btn').addEventListener('click', ()=> showToast('Google sign-in is not available yet', 'info'));
-  document.getElementById('apple-btn').addEventListener('click', ()=> showToast('Apple sign-in is not available yet', 'info'));
 
   document.getElementById('signup-form').addEventListener('submit', e=>{
     e.preventDefault();
