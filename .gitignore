@@ -28,3 +28,7 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Reference recordings (personal, large) -- never commit
+*.mp4
+*.mov
