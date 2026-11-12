@@ -100,12 +100,12 @@ function apiRoomToLocal(r){
     live: r.is_live,
     grad: ROOM_GRADIENTS[r.id % ROOM_GRADIENTS.length],
     hostId: r.host ? r.host.id : null,
-    hostDisplay: r.host ? { name: r.host.username, username: r.host.username, avatar: r.host.avatar_url, level: r.host.level } : null,
+    hostDisplay: r.host ? { name: r.host.username, username: r.host.username, avatar: r.host.avatar_url, level: r.host.level, vip: r.host.vip || 0, frame: r.host.frame || '' } : null,
   };
 }
 async function refreshApiRooms(){
   try{
-    const rooms = await Api.listRooms();
+    const rooms = await Api.listRooms(null, { sort: STATE.roomSort || 'popular', scope: STATE.roomScope });
     STATE.apiRooms = rooms.map(apiRoomToLocal);
   }catch(e){
     console.error('Could not load rooms from server', e);
@@ -129,6 +129,11 @@ function seededRandom(seed){
   for(let i=0;i<seed.length;i++){ h = (h*31 + seed.charCodeAt(i)) | 0; }
   return Math.abs(Math.sin(h)) % 1;
 }
+
+/* ---- status helpers from perks.js (guarded: app.js also runs alone in tests) ---- */
+function frameCls(key){ return typeof frameClass === 'function' ? frameClass(key) : ''; }
+function vipCls(vip){ return typeof vipNameClass === 'function' ? vipNameClass(vip) : ''; }
+function userBadges(u){ return typeof badgesHTML === 'function' ? badgesHTML(u) : ''; }
 
 /* ---------------------------- ICONS (Lucide) ------------------------------- */
 function ic(name){ return `<i data-lucide="${name}"></i>`; }
@@ -249,6 +254,10 @@ function profileToAccount(p){
     level: p.level || 1,
     bio: p.bio || '', country: p.country || '',
     followers: p.followers_count || 0, following: p.following_count || 0,
+    wealth_level: p.wealth ? p.wealth.level : (p.level || 1),
+    charm_level: p.charm ? p.charm.level : 1,
+    vip: p.vip ? (p.vip.tier || 0) : 0,
+    frame: p.frame || '', mount: p.mount || '',
   };
 }
 
@@ -294,8 +303,10 @@ function enterApp(){
   document.getElementById('home-greeting').innerHTML = `${escapeHTML(g)}, ${escapeHTML(u.name.split(' ')[0])}<span>Welcome back to Vibra</span>`;
   if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; if(VIBRA_CONFIG.DEMO_DATA){ document.getElementById('desktop-right').style.display='block'; document.querySelector('.desktop-layout').classList.add('has-rail'); } }
   const nb = document.getElementById('notif-badge');
-  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); loadBlocks(); loadGiftCatalog(); } // static "3" in the markup is demo data
+  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); loadBlocks(); loadGiftCatalog();
+    if(typeof refreshMe === 'function') refreshMe().then(() => maybeShowCheckin()); } // static "3" in the markup is demo data
   refreshWallet();
+  if(typeof renderHomeBanners === 'function') renderHomeBanners();
   renderHome();
   navigateTo('home'); // also refreshes the room list from the server
   openDeepLinkedRoom();
@@ -344,34 +355,40 @@ function filteredRooms(searchTerm){
   return rooms;
 }
 
-function roomCardHTML(room){
-  // Real mode shows the real host; the three fake attendee faces are demo-only.
-  const avatars = VIBRA_CONFIG.DEMO_DATA
-    ? DATA.users.slice(0,3).map(u=>`<img class="avatar" src="${imgSrc(u.avatar)}">`).join('')
-    : (room.hostDisplay ? `<img class="avatar" src="${imgSrc(room.hostDisplay.avatar)}">` : '');
+function roomCardHTML(room, idx){
+  const host = room.hostDisplay || (VIBRA_CONFIG.DEMO_DATA ? DATA.users[(Number(String(room.id).replace(/\D/g, '')) || 0) % DATA.users.length] : null);
+  const cover = host && host.avatar
+    ? `<img src="${imgSrc(host.avatar)}" alt="">`
+    : `<div style="width:100%;height:100%;background:${room.grad};"></div>`;
+  const hot = typeof idx === 'number' && idx < 3 && room.online > 0 && (STATE.roomSort || 'popular') === 'popular';
   return `
-  <div class="room-card" data-room-id="${escapeAttr(room.id)}" style="--rgrad:${room.grad}">
-    <div style="position:absolute; inset:0; background:${room.grad}; opacity:0.9; z-index:0;"></div>
-    <div class="room-card-top">
-      <span class="room-badge ${room.live?'live':''}">${room.live? '<span class="badge-live-dot"></span>LIVE' : ic('pause')+'OFFLINE'}</span>
-      <span class="room-cat">${escapeHTML(room.category)}</span>
+  <div class="room-row" data-room-id="${escapeAttr(room.id)}" role="button" tabindex="0">
+    <div class="rr-cover" style="background:${room.grad};">${cover}
+      ${hot ? `<span class="rr-hot">HOT</span>` : ''}
+      ${room.live ? `<span class="rr-live"><span class="badge-live-dot"></span>LIVE</span>` : ''}
     </div>
-    <div class="room-name">${escapeHTML(room.name)}</div>
-    <div class="room-desc">${escapeHTML(room.desc)}</div>
-    <div class="room-card-bottom">
-      <div style="display:flex; align-items:center;">
-        <div class="room-avatars">${avatars}</div>
-        <span class="room-online">${room.online.toLocaleString()} online</span>
-      </div>
-      <button class="room-join" data-join-room="${escapeAttr(room.id)}">Join</button>
+    <div class="rr-main">
+      <div class="rr-name">${escapeHTML(room.name)}</div>
+      <div class="rr-tags"><span class="rr-cat">${escapeHTML(room.category)}</span>${host ? `<span class="rr-host">by ${escapeHTML(host.name)}</span>` : ''}</div>
+      <div class="rr-desc">${escapeHTML(room.desc || 'Come say hi 👋')}</div>
+    </div>
+    <div class="rr-side">
+      <span class="rr-online"><span class="bars"><i></i><i></i><i></i></span>${Number(room.online || 0).toLocaleString()}</span>
+      ${room.giftTotal ? `<span class="rr-gifts">${ic('coins')}${escapeHTML(typeof formatScore === 'function' ? formatScore(room.giftTotal) : room.giftTotal)}</span>` : ''}
     </div>
   </div>`;
 }
 
 function renderTrendingRooms(){
-  const rooms = [...getRooms()].sort((a,b)=> b.online - a.online).slice(0,6);
+  // Real mode keeps the server's order (Popular / New / Following); demo sorts locally.
+  const rooms = VIBRA_CONFIG.DEMO_DATA
+    ? [...getRooms()].sort((a,b)=> b.online - a.online).slice(0,6)
+    : filteredRooms().slice(0, 30);
   const el = document.getElementById('trending-rooms');
-  el.innerHTML = rooms.length ? rooms.map(roomCardHTML).join('') : emptyStateHTML('🔍','No rooms found','Try a different category or search term.');
+  const empty = STATE.roomScope === 'following'
+    ? emptyStateHTML('👥','Nothing from people you follow','Follow hosts you like and their rooms show up here.')
+    : emptyStateHTML('🔍','No rooms found','Try a different category or start your own room.');
+  el.innerHTML = rooms.length ? rooms.map((r, i) => roomCardHTML(r, i)).join('') : empty;
 }
 
 function discoverRowHTML(room){
@@ -525,7 +542,7 @@ async function openRoomInner(roomId){
         system: m.is_system,
         displayName: m.user ? m.user.username : 'Vibra',
         avatarUrl: m.user ? m.user.avatar_url : '',
-        level: m.user && m.user.level, userId: m.user && m.user.id,
+        level: m.user && m.user.level, userId: m.user && m.user.id, vip: m.user && m.user.vip,
       })).join('');
     }catch(e){ box.innerHTML = ''; }
     box.scrollTop = box.scrollHeight;
@@ -540,7 +557,9 @@ async function openRoomInner(roomId){
   // Party-room welcome: pinned system note + your own entry banner.
   appendChatMessage({ system:true, text:`Welcome to ${room.name}! Take a seat to talk, be kind, and send gifts to show some love. 🎙️` });
   if(STATE.currentUser){
-    FX.entryBanner({ name: STATE.currentUser.name, avatar: STATE.currentUser.avatar, level: STATE.currentUser.level });
+    const me = STATE.currentUser;
+    FX.entryBanner({ name: me.name, avatar: me.avatar, level: me.level, vip: me.vip });
+    if(me.mount && FX.mountEntry) FX.mountEntry({ mount: me.mount, name: me.name, avatar: me.avatar, vip: me.vip });
     appendChatMessage({ notice:true, name: STATE.currentUser.name, text:'joined the room' });
   }
 
@@ -570,6 +589,8 @@ function seatsFromDetail(detail){
     name: s.user.username,
     level: s.user.level,
     avatar: s.user.avatar_url,
+    frame: s.user.frame || '', vip: s.user.vip || 0,
+    wealthLevel: s.user.wealth_level, charmLevel: s.user.charm_level,
     muted: s.is_muted,
     speaking:false,
     giftsReceived:0,
@@ -619,8 +640,12 @@ async function refreshActiveRoom(roomId){
   try{
     const detail = await Api.getRoom(roomId);
     if(!STATE.activeRoom || STATE.activeRoom.id !== roomId) return; // left while fetching
-    const speaking = new Map((ROOM_SEATS_CACHE[roomId] || []).filter(s=>!s.empty).map(s=>[s.userId, s.speaking]));
-    ROOM_SEATS_CACHE[roomId] = seatsFromDetail(detail).map(s => s.empty ? s : Object.assign(s, { speaking: !!speaking.get(s.userId) }));
+    // Keep client-side state the snapshot doesn't carry (speaking, gift tallies).
+    const prev = new Map((ROOM_SEATS_CACHE[roomId] || []).filter(s=>!s.empty).map(s=>[s.userId, s]));
+    ROOM_SEATS_CACHE[roomId] = seatsFromDetail(detail).map(s => {
+      const old = !s.empty && prev.get(s.userId);
+      return old ? Object.assign(s, { speaking: !!old.speaking, giftsReceived: old.giftsReceived || 0 }) : s;
+    });
     STATE.mySeatIndex = ROOM_SEATS_CACHE[roomId].findIndex(s=>s.isMe);
     STATE.moderatorIds = detail.moderator_ids || [];
     applyHandRaises(detail.hand_raises);
@@ -689,12 +714,13 @@ function connectRoomSocket(roomId){
           system: event.is_system,
           displayName: event.user ? event.user.username : 'Vibra',
           avatarUrl: event.user ? event.user.avatar_url : '',
-          level: event.user && event.user.level, userId: event.user && event.user.id,
+          level: event.user && event.user.level, userId: event.user && event.user.id, vip: event.user && event.user.vip,
         }));
         box.scrollTop = box.scrollHeight;
       }else if(event.event === 'presence_update' && event.action === 'joined' && event.user){
         if(!(STATE.currentUser && event.user.id === STATE.currentUser.id)){
-          FX.entryBanner({ name: event.user.username, avatar: event.user.avatar_url, level: event.user.level });
+          FX.entryBanner({ name: event.user.username, avatar: event.user.avatar_url, level: event.user.level, vip: event.user.vip });
+          if(event.user.mount && FX.mountEntry) FX.mountEntry({ mount: event.user.mount, name: event.user.username, avatar: event.user.avatar_url, vip: event.user.vip });
           appendChatMessage({ notice:true, name: event.user.username, text:'joined the room' }, true);
         }
         if(event.online_count != null){ STATE.activeRoom.online = event.online_count; updateRoomStats(); }
@@ -731,6 +757,9 @@ function connectRoomSocket(roomId){
             recipientName: event.recipient_name || 'someone', recipientId: event.recipient_id, mine: false,
           });
         }
+        // Gifts move wealth/charm/VIP: pick up the new badges once the effects have played.
+        clearTimeout(STATE.giftRefreshTimer);
+        STATE.giftRefreshTimer = setTimeout(() => scheduleRoomRefresh(roomId), 2500);
       }else if(event.event === 'hand_raised'){
         if(canModerate() && event.user){
           if(!STATE.handQueue.some(r => r.id === event.user.id || r.name === event.user.username)){
@@ -920,8 +949,8 @@ function seatHTML(p, idx){
   const tally = p.giftsReceived ? (typeof formatScore === 'function' ? formatScore(p.giftsReceived) : p.giftsReceived) : '';
   return `<div class="mic-seat ${p.muted?'muted':'speaking'} ${p.requesting?'requesting':''}" data-seat-idx="${idx}">
       ${crown}
-      <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${isHostSeat ? '<span class="seat-host">HOST</span>' : ''}${p.userId && isModeratorId(p.userId) ? `<span class="seat-mod" title="Moderator" aria-label="Moderator">${ic('shield')}</span>` : ''}${p.level && !isHostSeat ? `<span class="seat-level">Lv ${escapeHTML(p.level)}</span>` : ''}${p.muted ? `<span class="seat-mute-badge" aria-label="Muted">${ic('mic-off')}</span>` : ''}</div>
-      <span class="uname">${p.isMe? 'You' : escapeHTML(p.name)}</span>
+      <div class="vibra-ring ${p.speaking?'speaking':''}"><span class="seat-av${frameCls(p.frame)}"><img class="avatar" src="${imgSrc(p.avatar)}"></span>${isHostSeat ? '<span class="seat-host">HOST</span>' : ''}${p.userId && isModeratorId(p.userId) ? `<span class="seat-mod" title="Moderator" aria-label="Moderator">${ic('shield')}</span>` : ''}${p.level && !isHostSeat ? `<span class="seat-level">Lv ${escapeHTML(p.level)}</span>` : ''}${p.muted ? `<span class="seat-mute-badge" aria-label="Muted">${ic('mic-off')}</span>` : ''}</div>
+      <span class="uname${vipCls(p.vip)}">${p.isMe? 'You' : escapeHTML(p.name)}</span>
       ${tally ? `<span class="seat-gift-pill">${ic('coins')}${escapeHTML(tally)}</span>` : ''}
     </div>`;
 }
@@ -988,6 +1017,8 @@ function openSeatProfile(idx){
   const seat = seats[idx];
   if(!seat || seat.empty) return;
   document.getElementById('seat-profile-avatar').src = safeImgUrl(seat.avatar);
+  document.getElementById('seat-profile-frame').className = 'avatar-wrap lg' + frameCls(seat.frame);
+  document.getElementById('seat-profile-badges').innerHTML = userBadges({ wealth_level: seat.wealthLevel || seat.level, charm_level: seat.charmLevel, vip: seat.vip });
   document.getElementById('seat-profile-name').textContent = seat.isMe ? (STATE.currentUser?STATE.currentUser.name:'You') : seat.name;
   document.getElementById('seat-profile-level').textContent = seat.level ? `Lv ${seat.level}` : 'Lv —';
   document.getElementById('seat-profile-sub').innerHTML = seat.muted ? ic('mic-off') + ' Muted on mic' : ic('mic') + ' Speaking';
@@ -1068,6 +1099,7 @@ function requestSeat(idx){
       Object.assign(seat, {
         empty:false, requesting:false, isMe:true, name: STATE.currentUser.name,
         level: STATE.currentUser.level || 1, avatar: STATE.currentUser.avatar,
+        frame: STATE.currentUser.frame || '', vip: STATE.currentUser.vip || 0,
         muted: hostMuted, speaking:false, giftsReceived:0, userId: STATE.currentUser.id,
       });
       STATE.mySeatIndex = idx;
@@ -1284,7 +1316,9 @@ function startRoomAmbience(){
 
 // Name pills: level, Host, Mod.
 function msgPills(m){
-  let out = m.level ? `<span class="msg-pill lv">Lv ${escapeHTML(m.level)}</span>` : '';
+  const vip = Math.min(5, Number(m.vip) || 0);
+  let out = vip ? `<span class="bdg vip vip-${vip}">VIP${vip}</span>` : '';
+  out += m.level ? `<span class="msg-pill lv">Lv ${escapeHTML(m.level)}</span>` : '';
   const hostId = STATE.activeRoom && STATE.activeRoom.hostId;
   if(m.userId != null && hostId != null && m.userId === hostId) out += '<span class="msg-pill host">Host</span>';
   else if(m.userId != null && isModeratorId(m.userId)) out += '<span class="msg-pill mod">Mod</span>';
@@ -1303,10 +1337,11 @@ function chatMessageHTML(m){
   const time = m.time || nowTime();
   const giftClass = m.gift ? 'gift' : '';
   const replyBlock = m.replyTo ? `<div class="msg-reply-quote">${ic('corner-up-left')} ${escapeHTML(m.replyTo.name)}: ${escapeHTML(m.replyTo.text.slice(0,60))}</div>` : '';
-  return `<div class="msg ${giftClass}" data-msg-name="${escapeAttr(displayName.split(' ')[0])}" data-msg-text="${escapeAttr(m.text)}">
+  const vipN = Math.min(5, Number(m.vip) || 0);
+  return `<div class="msg ${giftClass}${vipN >= 3 ? ' vip3' : ''}" data-msg-name="${escapeAttr(displayName.split(' ')[0])}" data-msg-text="${escapeAttr(m.text)}">
     <img class="avatar" src="${imgSrc(avatar)}">
     <div class="msg-body">
-      <div class="msg-head"><span class="uname">${escapeHTML(displayName.split(' ')[0])}${msgPills(m)}</span><span class="time">${escapeHTML(time)}</span></div>
+      <div class="msg-head"><span class="uname"><span class="${vipCls(m.vip).trim()}">${escapeHTML(displayName.split(' ')[0])}</span>${msgPills(m)}</span><span class="time">${escapeHTML(time)}</span></div>
       ${replyBlock}
       <div class="text">${escapeHTML(m.text)}</div>
     </div>
@@ -1765,6 +1800,8 @@ function sendGift(fromCombo){
       try{
         const res = await Api.sendGift(STATE.activeRoom.id, to.id, gift.id, qty);
         STATE.walletBalance = res.balance;
+        clearTimeout(STATE.meRefreshTimer);
+        if(typeof refreshMe === 'function') STATE.meRefreshTimer = setTimeout(refreshMe, 1500);
       }catch(err){
         showToast(err.message || 'Could not send gift', 'error');
         FX.Combo.hide();
@@ -1956,7 +1993,7 @@ function renderOwnProfile(){
     target.innerHTML = apiProfileHTML({
       id: u.id, username: u.username, avatar_url: u.avatar, bio: u.bio, country: u.country,
       level: u.level || 1, followers_count: u.followers || 0, following_count: u.following || 0,
-      live_room: null,
+      live_room: null, wealth_level: u.wealth_level, charm_level: u.charm_level, vip: u.vip, vip_tier: u.vip, frame: u.frame,
     }, true);
     return;
   }
@@ -2198,13 +2235,30 @@ function loadBlocks(){
 }
 
 /* ---------------------------- REAL PROFILES ------------------------------- */
+// /profiles/<name>/ sends nested {wealth:{level}, vip:{tier}}; own-profile renders pass flat fields.
+function statusOf(p){
+  return {
+    wealth_level: p.wealth ? p.wealth.level : (p.wealth_level || p.level || 1),
+    charm_level: p.charm ? p.charm.level : (p.charm_level || 1),
+    vip: p.vip && typeof p.vip === 'object' ? (p.vip.tier || 0) : (Number(p.vip) || 0),
+  };
+}
 function apiProfileHTML(p, isSelf){
   const grad = DATA.gradients[(p.level || 1) % DATA.gradients.length];
   const live = p.live_room
     ? `<div class="live-now-pill" data-join-live="${Number(p.live_room.id)}"><span class="badge-live-dot"></span>Live now: ${escapeHTML(p.live_room.name)}</div>`
     : '';
+  const menuRow = (key, icon, label, hint, bg) => `<button type="button" data-me-menu="${key}"><span class="ic" style="background:${bg}">${ic(icon)}</span><span class="lbl">${label}</span>${hint ? `<span class="hint">${hint}</span>` : ''}${ic('chevron-right')}</button>`;
   const actions = isSelf
-    ? `<div class="profile-btn-row"><button class="btn btn-glass" style="flex:1;" data-open-settings>Edit Profile</button></div>`
+    ? `<div class="profile-btn-row"><button class="btn btn-glass" style="flex:1;" data-me-menu="edit">${ic('user-pen')} Edit profile</button></div>
+       <div class="me-menu">
+         ${menuRow('wallet', 'wallet', 'Wallet', '', 'linear-gradient(135deg,#ffc857,#ff7a45)')}
+         ${menuRow('store', 'store', 'Store', 'Frames · Mounts', 'linear-gradient(135deg,#b721ff,#ff3ea5)')}
+         ${menuRow('levels', 'crown', 'Levels & VIP', p.vip_tier ? `VIP${Number(p.vip_tier)}` : '', 'linear-gradient(135deg,#7b2ff7,#2fe6d8)')}
+         ${menuRow('leaderboard', 'trophy', 'Rankings', '', 'linear-gradient(135deg,#f59e0b,#e11d48)')}
+         ${menuRow('tasks', 'list-checks', 'Daily tasks', 'Free coins', 'linear-gradient(135deg,#0ea5e9,#10b981)')}
+         ${menuRow('settings', 'settings', 'Settings', '', 'linear-gradient(135deg,#64748b,#334155)')}
+       </div>`
     : `<div class="profile-btn-row">
          <button class="btn ${p.is_following?'btn-glass':'btn-primary'}" style="flex:1;" data-api-follow="${Number(p.id)}" data-following="${p.is_following?'1':''}">${p.is_following?'Following':'Follow'}</button>
          <button class="btn btn-glass" style="flex:1;" data-dm-user="${Number(p.id)}">${ic('message-circle')} Message</button>
@@ -2216,8 +2270,9 @@ function apiProfileHTML(p, isSelf){
   return `
     <div class="profile-cover" style="background:${grad};"></div>
     <div class="profile-main">
-      <img class="avatar" src="${imgSrc(p.avatar_url)}">
-      <div class="profile-name-row"><h2>${escapeHTML(p.username)}</h2><span class="level-badge">Lv ${Number(p.level || 1)}</span></div>
+      <div class="avatar-wrap lg${frameCls(p.frame)}"><img class="avatar" src="${imgSrc(p.avatar_url)}"></div>
+      <div class="profile-name-row"><h2 class="${vipCls(statusOf(p).vip).trim()}">${escapeHTML(p.username)}</h2><span class="level-badge">Lv ${Number(p.level || 1)}</span></div>
+      <div class="profile-badges-row">${userBadges(statusOf(p))}</div>
       <div class="profile-username">@${escapeHTML(p.username)}</div>
       ${p.bio ? `<div class="profile-bio">${escapeHTML(p.bio)}</div>` : '<div style="height:12px"></div>'}
       ${p.country ? `<div class="profile-country">${ic('map-pin')} ${escapeHTML(p.country)}</div>` : ''}
@@ -2539,7 +2594,18 @@ function bindHome(){
   document.getElementById('room-search').addEventListener('input', e=>{
     renderRecommended();
     const rooms = filteredRooms(e.target.value);
-    document.getElementById('trending-rooms').innerHTML = rooms.length ? rooms.map(roomCardHTML).join('') : emptyStateHTML('🔍','No rooms found','Try a different search term.');
+    document.getElementById('trending-rooms').innerHTML = rooms.length ? rooms.map((r, i) => roomCardHTML(r, i)).join('') : emptyStateHTML('🔍','No rooms found','Try a different search term.');
+  });
+  document.getElementById('room-sort').addEventListener('click', e=>{
+    if(e.target.closest('#home-lb-link')){ if(typeof openLeaderboard === 'function') openLeaderboard('rich', 'week'); return; }
+    const b = e.target.closest('[data-room-sort]');
+    if(!b) return;
+    const v = b.dataset.roomSort;
+    STATE.roomSort = v === 'following' ? 'new' : v;
+    STATE.roomScope = v === 'following' ? 'following' : '';
+    document.querySelectorAll('#room-sort [data-room-sort]').forEach(x => x.classList.toggle('active', x === b));
+    document.getElementById('trending-rooms').innerHTML = emptyStateHTML('⏳','Loading…','');
+    refreshApiRooms().then(()=>{ renderTrendingRooms(); });
   });
   document.getElementById('open-notifications').addEventListener('click', ()=>{ renderNotifications(); openOverlay('screen-notifications'); });
   document.getElementById('notifications-list').addEventListener('click', e=>{
@@ -3014,6 +3080,8 @@ function bindCreateRoom(){
 
 function bindSettings(){
   document.getElementById('logout-btn').addEventListener('click', ()=> openModal('logout-modal'));
+  const editRow = document.getElementById('settings-edit-profile');
+  if(editRow) editRow.addEventListener('click', ()=>{ if(VIBRA_CONFIG.DEMO_DATA){ showToast('Profile editing needs a real account', 'info'); return; } openEditProfile(); });
   document.getElementById('confirm-logout').addEventListener('click', doLogout);
   document.getElementById('toggle-notif').addEventListener('click', function(){ this.classList.toggle('on'); });
   document.getElementById('toggle-dark').addEventListener('click', function(){ this.classList.toggle('on'); showToast('Dark mode is the only mode on Vibra 😉','info'); this.classList.add('on'); });
@@ -3101,6 +3169,7 @@ function init(){
   bindProfileAndMessages();
   bindCreateRoom();
   bindSettings();
+  if(typeof bindPerks === 'function') bindPerks();
   bindOverlaysAndModals();
   bindGlobalKeyboard();
   renderDiscoverTab();

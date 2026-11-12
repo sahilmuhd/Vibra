@@ -50,9 +50,29 @@ def send_gift(*, sender, recipient, gift, room, combo=1):
         user=recipient, type=Transaction.TYPE_GIFT_RECEIVED, amount=cost,
         label=f"Received {gift.name} x{combo} from {sender}", related_gift_event=event,
     )
+    _add_xp(sender, wealth=cost)
+    _add_xp(recipient, charm=cost)
     notify(recipient, sender, Notification.TYPE_GIFT,
            f"{sender} sent you {gift.name}" + (f" x{combo}" if combo > 1 else ""), room=room)
     return event
+
+
+def _add_xp(user, wealth=0, charm=0):
+    """Gift value counts toward levels: spent -> wealth (and VIP), received -> charm."""
+    from django.db.models import F
+
+    from apps.accounts.levels import level_for
+    from apps.accounts.models import Profile
+    from apps.accounts.profiles import ensure_profile
+
+    ensure_profile(user)
+    Profile.objects.filter(user=user).update(wealth_xp=F("wealth_xp") + wealth, charm_xp=F("charm_xp") + charm)
+    profile = Profile.objects.get(user=user)
+    lvl = level_for(profile.wealth_xp)
+    if profile.level != lvl:
+        Profile.objects.filter(pk=profile.pk).update(level=lvl)
+    if hasattr(user, "_state") and hasattr(user, "profile"):
+        user.profile.refresh_from_db()
 
 
 @transaction.atomic

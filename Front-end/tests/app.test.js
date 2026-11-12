@@ -69,7 +69,17 @@ test('real mode shows ONLY backend rooms; DEMO_DATA adds the mock ones', () => {
 test('profileToAccount maps /me payload incl. id and counts', () => {
   const { profileToAccount } = loadApp();
   const a = profileToAccount({ id: 9, username: 'sahil', avatar_url: 'https://x/y.svg', level: 2, bio: 'hi', country: 'IN', followers_count: 3, following_count: 4 });
-  assert.deepEqual(a, { id: 9, name: 'sahil', username: 'sahil', avatar: 'https://x/y.svg', level: 2, bio: 'hi', country: 'IN', followers: 3, following: 4 });
+  assert.deepEqual(a, { id: 9, name: 'sahil', username: 'sahil', avatar: 'https://x/y.svg', level: 2, bio: 'hi', country: 'IN', followers: 3, following: 4,
+    wealth_level: 2, charm_level: 1, vip: 0, frame: '', mount: '' });
+});
+
+test('status fields map from /me and render on seats without perks.js', () => {
+  const app = loadApp();
+  const a = app.profileToAccount({ id: 1, username: 'v', level: 5, wealth: { level: 5 }, charm: { level: 3 }, vip: { tier: 2 }, frame: 'gold', mount: 'car' });
+  assert.equal(a.vip, 2); assert.equal(a.charm_level, 3); assert.equal(a.frame, 'gold'); assert.equal(a.mount, 'car');
+  app.STATE.currentUser = { id: 1 }; app.STATE.activeRoom = { id: 5 }; app.ROOM_SEATS_CACHE[5] = [];
+  const seat = app.seatsFromDetail({ seats: [{ is_muted: false, user: { id: 2, username: 'x', level: 3, avatar_url: '', frame: '"><script>', vip: 4 } }] })[0];
+  assert.ok(!/<script>/.test(app.seatHTML(seat, 0)));
 });
 
 test('parseRoomId: digits become numbers (API rooms), others stay strings (demo rooms)', () => {

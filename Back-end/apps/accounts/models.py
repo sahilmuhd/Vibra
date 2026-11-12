@@ -18,8 +18,29 @@ class Profile(models.Model):
     is_guest = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Coin totals behind levels/VIP (see accounts/levels.py). `level` above
+    # mirrors the wealth level so older clients keep showing a sensible "Lv".
+    wealth_xp = models.BigIntegerField(default=0)
+    charm_xp = models.BigIntegerField(default=0)
+
+    # Equipped store items (key + when it runs out); see apps/perks.
+    frame_key = models.CharField(max_length=32, blank=True)
+    frame_until = models.DateTimeField(null=True, blank=True)
+    mount_key = models.CharField(max_length=32, blank=True)
+    mount_until = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return self.username
+
+    def active_frame(self, now=None):
+        from django.utils import timezone
+        now = now or timezone.now()
+        return self.frame_key if self.frame_key and self.frame_until and self.frame_until > now else ""
+
+    def active_mount(self, now=None):
+        from django.utils import timezone
+        now = now or timezone.now()
+        return self.mount_key if self.mount_key and self.mount_until and self.mount_until > now else ""
 
 
 class Follow(models.Model):

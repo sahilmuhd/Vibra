@@ -127,14 +127,44 @@ const FX = (() => {
     entryQ(async () => {
       const layer = document.getElementById('entry-banner-layer');
       if (!layer || !enabled()) return;
-      const b = el('div', 'fx-entry', `
+      const vip = Math.min(5, Number(u.vip) || 0);
+      const b = el('div', 'fx-entry' + (vip ? ' vip' : ''), `
         <img class="avatar" src="${imgSrc(u.avatar)}" alt="">
-        <span class="lv">Lv ${Number(u.level) || 1}</span>
+        <span class="lv">${vip ? 'VIP' + vip : 'Lv ' + (Number(u.level) || 1)}</span>
         <span class="t"><b>${escapeHTML(u.name)}</b> joined the room</span>
         <span class="spark"></span>`);
       layer.appendChild(b);
       await wait(reduced() ? 1800 : 2700);
       b.remove();
+    });
+  }
+
+  /* ---------- mount entrance (store item): vehicle crosses the room ---------- */
+  const MOUNT_EMOJI = { bike: '🏍️', car: '🏎️', rocket: '🚀', unicorn: '🦄', ufo: '🛸', dragon: '🐉' };
+  const MOUNT_NAME = { bike: 'Street Bike', car: 'Supercar', rocket: 'Rocket', unicorn: 'Unicorn', ufo: 'UFO', dragon: 'Dragon' };
+  const mountQ = queue(4);
+  function mountEntry(u) {
+    if (!MOUNT_EMOJI[u.mount] || (!enabled() && !u.preview)) return;
+    mountQ(async () => {
+      const lane = el('div', 'fx-mount-lane' + (u.preview ? ' preview' : ''));
+      lane.innerHTML = `
+        <div class="fx-mount m-${u.mount}"><span class="veh">${MOUNT_EMOJI[u.mount]}</span><span class="trail"></span></div>
+        <div class="fx-mount-tag"><img class="avatar" src="${imgSrc(u.avatar)}" alt=""><b>${escapeHTML(u.name)}</b> rode in on ${MOUNT_NAME[u.mount]}</div>`;
+      document.body.appendChild(lane);
+      let sys = null, canvas = null, t = null;
+      if (!reduced()) {
+        canvas = el('canvas', 'fx-canvas'); document.body.appendChild(canvas);
+        sys = particles(canvas);
+        const veh = lane.querySelector('.fx-mount');
+        t = setInterval(() => {
+          const c = centerOf(veh);
+          sys.add({ x: c.x - 34, y: c.y + 14 + (Math.random() - .5) * 18, vx: -3 - Math.random() * 3, vy: (Math.random() - .5),
+            decay: .03, size: 2 + Math.random() * 3, color: pick(['#ffc857', '#ff3ea5', '#2fe6d8']), glow: 14, shape: Math.random() < .3 ? 'star' : 'dot' });
+        }, 24);
+      }
+      await wait(reduced() ? 2200 : 3400);
+      clearInterval(t); lane.remove();
+      if (sys) { sys.stop(); canvas.remove(); }
     });
   }
 
@@ -274,7 +304,7 @@ const FX = (() => {
     return { show, bump, hide, get count() { return count; } };
   })();
 
-  return { enabled, setEnabled, flyTo, burstAt, giftBanner, entryBanner, fullscreen, globalBanner, Combo };
+  return { enabled, setEnabled, flyTo, burstAt, giftBanner, entryBanner, mountEntry, fullscreen, globalBanner, Combo };
 })();
 
 // 58200000 -> "58.2M"

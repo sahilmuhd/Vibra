@@ -165,9 +165,14 @@ const Api = {
   },
 
   // ---- rooms ----
-  async listRooms(category) {
-    const q = category && category !== "All" ? `?category=${encodeURIComponent(category.toLowerCase())}` : "";
-    return this.request(`/rooms/${q}`);
+  // sort: "popular" | "new" (default); scope: "following" shows rooms hosted by people you follow.
+  async listRooms(category, { sort, scope } = {}) {
+    const params = new URLSearchParams();
+    if (category && category !== "All") params.set("category", category.toLowerCase());
+    if (sort === "popular") params.set("sort", "popular");
+    if (scope === "following") params.set("scope", "following");
+    const q = params.toString();
+    return this.request(`/rooms/${q ? "?" + q : ""}`);
   },
 
   async createRoom({ name, category, description }) {
@@ -310,6 +315,42 @@ const Api = {
 
   async unreadDMCount() {
     return this.request(`/dms/unread-count/`);
+  },
+
+  // ---- profile ----
+  async updateMe(fields) {
+    return this.request(`/auth/me/`, { method: "PATCH", body: fields });
+  },
+
+  // Multipart upload (request() only speaks JSON). Retries once after a token refresh.
+  async uploadAvatar(blob) {
+    const send = () => {
+      const form = new FormData();
+      form.append("avatar", blob, "avatar.jpg");
+      const token = this.getAccessToken();
+      return fetch(`${API_BASE}/auth/me/avatar/`, {
+        method: "POST", body: form, headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    };
+    let res;
+    try { res = await send(); }
+    catch (e) { const err = new Error("Can't reach the Vibra server. Check your connection."); err.status = 0; throw err; }
+    if (res.status === 401 && await this.refreshAccessToken()) res = await send();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { const err = new Error(data.detail || "Upload failed"); err.status = res.status; throw err; }
+    return data;
+  },
+
+  // ---- store, rewards, leaderboards ----
+  async getStore() { return this.request(`/perks/store/`); },
+  async buyItem(itemId) { return this.request(`/perks/store/buy/`, { method: "POST", body: { item_id: itemId } }); },
+  async equipItem(itemId, kind) { return this.request(`/perks/store/equip/`, { method: "POST", body: { item_id: itemId, kind } }); },
+  async getCheckin() { return this.request(`/perks/checkin/`); },
+  async claimCheckin() { return this.request(`/perks/checkin/`, { method: "POST" }); },
+  async getTasks() { return this.request(`/perks/tasks/`); },
+  async claimTask(key) { return this.request(`/perks/tasks/`, { method: "POST", body: { key } }); },
+  async getLeaderboard(board, period) {
+    return this.request(`/perks/leaderboard/?board=${encodeURIComponent(board)}&period=${encodeURIComponent(period)}`);
   },
 
   // ---- voice (LiveKit) ----

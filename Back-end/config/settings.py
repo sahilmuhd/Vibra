@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "apps.wallet",
     "apps.notifications",
     "apps.dms",
+    "apps.perks",
 ]
 
 MIDDLEWARE = [
@@ -109,6 +110,7 @@ REST_FRAMEWORK = {
         "auth": "10/minute",   # login / signup / guest / password reset, per IP
         "chat": "90/minute",   # room messages (list + send), per user
         "report": "20/hour",
+        "upload": "20/hour",
     },
     # Number of reverse proxies in front of the app (Render = 1) so throttling
     # keys on the real client IP instead of the proxy's.
@@ -144,6 +146,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Uploaded profile pictures (served by Django at /media/; small enough not to need a CDN yet).
+MEDIA_URL = "/media/"
+MEDIA_ROOT = Path(config("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 STORAGES = {
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",

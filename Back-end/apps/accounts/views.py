@@ -232,3 +232,26 @@ class BlockListView(generics.ListAPIView):
 
     def get_queryset(self):
         return User.objects.filter(blocked_by__blocker=self.request.user).select_related("profile")
+
+
+class AvatarUploadView(APIView):
+    """POST multipart `avatar`: replaces the caller's profile picture."""
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_scope = "upload"
+
+    def post(self, request):
+        from .avatars import AvatarError, delete_old_avatar, save_avatar
+
+        upload = request.FILES.get("avatar")
+        if upload is None:
+            return Response({"detail": "Choose an image to upload."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rel = save_avatar(upload, request.user.id)
+        except AvatarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        profile = ensure_profile(request.user)
+        old = profile.avatar_url
+        profile.avatar_url = request.build_absolute_uri(settings.MEDIA_URL + rel)
+        profile.save(update_fields=["avatar_url"])
+        delete_old_avatar(old)
+        return Response(ProfileSerializer(profile, context={"request": request}).data)

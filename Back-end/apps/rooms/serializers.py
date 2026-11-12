@@ -13,10 +13,16 @@ class RoomListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Room
-        fields = ["id", "name", "category", "description", "host", "is_live", "online_count", "thumbnail_seed"]
+        fields = ["id", "name", "category", "description", "host", "is_live", "online_count", "thumbnail_seed", "gift_total"]
         # Clients must not decide liveness or the thumbnail seed.
         read_only_fields = ["id", "is_live", "thumbnail_seed"]
         extra_kwargs = {"name": {"min_length": 2}}
+
+    # Coins gifted in the room so far (the trophy score); annotated by room_queryset().
+    gift_total = serializers.SerializerMethodField()
+
+    def get_gift_total(self, obj):
+        return getattr(obj, "gift_total", 0) or 0
 
     def get_online_count(self, obj):
         """Everyone currently in the room (listeners + speakers). Uses the
@@ -35,8 +41,6 @@ class SeatSerializer(serializers.ModelSerializer):
 
 class RoomDetailSerializer(RoomListSerializer):
     seats = SeatSerializer(many=True, read_only=True)
-    # Coins gifted in this room so far (the trophy score).
-    gift_total = serializers.IntegerField(read_only=True, default=0)
     moderator_ids = serializers.SerializerMethodField()
     hand_raises = serializers.SerializerMethodField()
 

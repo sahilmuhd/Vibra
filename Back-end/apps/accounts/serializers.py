@@ -7,6 +7,7 @@ from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from .levels import level_for, level_progress, vip_for, vip_progress
 from .models import Profile
 
 USERNAME_RE = re.compile(r"^[a-z0-9_]{3,30}$")
@@ -21,10 +22,31 @@ class PublicUserSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="profile.username")
     avatar_url = serializers.URLField(source="profile.avatar_url")
     level = serializers.IntegerField(source="profile.level")
+    # Status shown next to names everywhere (all read from the already-loaded profile).
+    wealth_level = serializers.SerializerMethodField()
+    charm_level = serializers.SerializerMethodField()
+    vip = serializers.SerializerMethodField()
+    frame = serializers.SerializerMethodField()
+    mount = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "username", "avatar_url", "level"]
+        fields = ["id", "username", "avatar_url", "level", "wealth_level", "charm_level", "vip", "frame", "mount"]
+
+    def get_wealth_level(self, user):
+        return level_for(user.profile.wealth_xp)
+
+    def get_charm_level(self, user):
+        return level_for(user.profile.charm_xp)
+
+    def get_vip(self, user):
+        return vip_for(user.profile.wealth_xp)
+
+    def get_frame(self, user):
+        return user.profile.active_frame()
+
+    def get_mount(self, user):
+        return user.profile.active_mount()
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -37,13 +59,18 @@ class ProfileSerializer(serializers.ModelSerializer):
     is_following = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
     live_room = serializers.SerializerMethodField()
+    wealth = serializers.SerializerMethodField()
+    charm = serializers.SerializerMethodField()
+    vip = serializers.SerializerMethodField()
+    frame = serializers.SerializerMethodField()
+    mount = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
         fields = [
             "id", "username", "avatar_url", "bio", "country", "level",
             "followers_count", "following_count", "is_following", "is_blocked",
-            "live_room", "created_at",
+            "live_room", "created_at", "wealth", "charm", "vip", "frame", "mount",
         ]
         # `username` is read-only here: it is mirrored on auth.User (used for
         # login), and PATCHing only Profile.username silently desynced the two.
@@ -64,6 +91,21 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_is_following(self, obj):
         viewer = self._viewer()
         return bool(viewer) and obj.user.follower_set.filter(follower=viewer).exists()
+
+    def get_wealth(self, obj):
+        return level_progress(obj.wealth_xp)
+
+    def get_charm(self, obj):
+        return level_progress(obj.charm_xp)
+
+    def get_vip(self, obj):
+        return vip_progress(obj.wealth_xp)
+
+    def get_frame(self, obj):
+        return obj.active_frame()
+
+    def get_mount(self, obj):
+        return obj.active_mount()
 
     def get_live_room(self, obj):
         """The room this user is hosting right now, if any (for "Live now" on profiles)."""

@@ -59,10 +59,17 @@ class RoomListCreateView(generics.ListCreateAPIView):
     serializer_class = RoomListSerializer
 
     def get_queryset(self):
-        qs = room_queryset().filter(is_live=True).order_by("-created_at", "-id")
-        category = (self.request.query_params.get("category") or "").strip().lower()
+        params = self.request.query_params
+        qs = room_queryset().filter(is_live=True)
+        if params.get("sort") == "popular":
+            qs = qs.order_by("-online_total", "-gift_total", "-created_at")
+        else:
+            qs = qs.order_by("-created_at", "-id")
+        category = (params.get("category") or "").strip().lower()
         if category:
             qs = qs.filter(category=category)
+        if params.get("scope") == "following":
+            qs = qs.filter(host__follower_set__follower=self.request.user)
         return qs[:ROOM_LIST_LIMIT]
 
     @transaction.atomic

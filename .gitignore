@@ -32,3 +32,6 @@ desktop.ini
 # Reference recordings (personal, large) -- never commit
 *.mp4
 *.mov
+
+# Uploaded profile pictures
+Back-end/media/
