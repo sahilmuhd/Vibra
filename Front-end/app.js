@@ -96,6 +96,7 @@ function apiRoomToLocal(r){
     desc: r.description || '',
     category: r.category,
     online: r.online_count || 0,
+    giftTotal: r.gift_total || 0,
     live: r.is_live,
     grad: ROOM_GRADIENTS[r.id % ROOM_GRADIENTS.length],
     hostId: r.host ? r.host.id : null,
@@ -293,7 +294,7 @@ function enterApp(){
   document.getElementById('home-greeting').innerHTML = `${escapeHTML(g)}, ${escapeHTML(u.name.split(' ')[0])}<span>Welcome back to Vibra</span>`;
   if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; if(VIBRA_CONFIG.DEMO_DATA){ document.getElementById('desktop-right').style.display='block'; document.querySelector('.desktop-layout').classList.add('has-rail'); } }
   const nb = document.getElementById('notif-badge');
-  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); loadBlocks(); } // static "3" in the markup is demo data
+  if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); loadBlocks(); loadGiftCatalog(); } // static "3" in the markup is demo data
   refreshWallet();
   renderHome();
   navigateTo('home'); // also refreshes the room list from the server
@@ -452,6 +453,9 @@ let speakerOn = true;
 // Guards against double-taps on "Join" opening the room (and its socket/voice) twice.
 async function openRoom(roomId){
   if(STATE.openingRoom) return;
+  // Already in this room (e.g. minimised with "Keep"): just bring it back.
+  if(STATE.activeRoom && STATE.activeRoom.id === roomId){ restoreRoom(); return; }
+  if(STATE.activeRoom) leaveRoom();
   STATE.openingRoom = true;
   try{ await openRoomInner(roomId); }
   finally{ STATE.openingRoom = false; }
@@ -484,10 +488,11 @@ async function openRoomInner(roomId){
   ));
 
   document.getElementById('room-title').textContent = room.name;
-  document.getElementById('room-online-count').textContent = `${room.online.toLocaleString()} Online`;
+  document.getElementById('room-id-label').textContent = `ID ${room.id}`;
   document.getElementById('host-avatar').src = safeImgUrl(host.avatar);
   document.getElementById('host-name').textContent = host.name;
-  document.getElementById('host-ring').classList.add('speaking');
+  document.getElementById('room-mini-avatar').src = safeImgUrl(host.avatar);
+  resetRoomChrome();
 
   STATE.moderatorIds = (isApiRoom && room._moderatorIds) || [];
   if(isApiRoom) applyHandRaises(room._handRaises);
@@ -507,6 +512,7 @@ async function openRoomInner(roomId){
   STATE.giftCombo = 1;
   hideReplyPreview();
   renderMicGrid();
+  updateRoomStats();
 
   const box = document.getElementById('chat-messages');
   if(isApiRoom){
@@ -519,6 +525,7 @@ async function openRoomInner(roomId){
         system: m.is_system,
         displayName: m.user ? m.user.username : 'Vibra',
         avatarUrl: m.user ? m.user.avatar_url : '',
+        level: m.user && m.user.level, userId: m.user && m.user.id,
       })).join('');
     }catch(e){ box.innerHTML = ''; }
     box.scrollTop = box.scrollHeight;
@@ -528,6 +535,13 @@ async function openRoomInner(roomId){
     const seed = DATA.messagesSeed[roomId] || DATA.messagesSeed.default;
     box.innerHTML = seed.map(m=> chatMessageHTML(m)).join('');
     box.scrollTop = box.scrollHeight;
+  }
+
+  // Party-room welcome: pinned system note + your own entry banner.
+  appendChatMessage({ system:true, text:`Welcome to ${room.name}! Take a seat to talk, be kind, and send gifts to show some love. 🎙️` });
+  if(STATE.currentUser){
+    FX.entryBanner({ name: STATE.currentUser.name, avatar: STATE.currentUser.avatar, level: STATE.currentUser.level });
+    appendChatMessage({ notice:true, name: STATE.currentUser.name, text:'joined the room' });
   }
 
   micOn = true; speakerOn = true;
@@ -612,7 +626,8 @@ async function refreshActiveRoom(roomId){
     applyHandRaises(detail.hand_raises);
     syncMyMicFromServer();
     STATE.activeRoom.online = detail.online_count || 0;
-    document.getElementById('room-online-count').textContent = `${STATE.activeRoom.online.toLocaleString()} Online`;
+    if(detail.gift_total != null) STATE.activeRoom.giftTotal = detail.gift_total;
+    updateRoomStats();
     renderMicGrid();
   }catch(e){
     console.error('Could not refresh room', e);
@@ -674,8 +689,16 @@ function connectRoomSocket(roomId){
           system: event.is_system,
           displayName: event.user ? event.user.username : 'Vibra',
           avatarUrl: event.user ? event.user.avatar_url : '',
+          level: event.user && event.user.level, userId: event.user && event.user.id,
         }));
         box.scrollTop = box.scrollHeight;
+      }else if(event.event === 'presence_update' && event.action === 'joined' && event.user){
+        if(!(STATE.currentUser && event.user.id === STATE.currentUser.id)){
+          FX.entryBanner({ name: event.user.username, avatar: event.user.avatar_url, level: event.user.level });
+          appendChatMessage({ notice:true, name: event.user.username, text:'joined the room' }, true);
+        }
+        if(event.online_count != null){ STATE.activeRoom.online = event.online_count; updateRoomStats(); }
+        scheduleRoomRefresh(roomId);
       }else if(event.event === 'seat_update' || event.event === 'seat_mute' || event.event === 'presence_update' || event.event === 'seat_lock'){
         scheduleRoomRefresh(roomId);
       }else if(event.event === 'moderators_update'){
@@ -698,13 +721,14 @@ function connectRoomSocket(roomId){
       }else if(event.event === 'gift_sent'){
         const isMine = event.sender_id === (STATE.currentUser && STATE.currentUser.id);
         if(!isMine){
-          const gift = DATA.giftCatalog.find(g => g.id === event.gift_id) || { emoji: event.gift_emoji || '🎁', name: event.gift_name || 'Gift' };
-          playGiftAnimation(gift.emoji, 100, event.combo || 1);
-          appendChatMessage({
-            who: 'system',
-            gift: true,
-            text: `🎉 ${event.sender_name || 'Someone'} sent ${gift.name} ${gift.emoji}${event.combo > 1 ? ` x${event.combo}` : ''}`,
-            system: false,
+          const known = findGift(event.gift_id) || {};
+          playGiftEffects({
+            gift: { id: event.gift_id, emoji: event.gift_emoji || known.emoji || '🎁', name: event.gift_name || known.name || 'Gift',
+                    cost: event.gift_cost != null ? event.gift_cost : (known.cost || 0),
+                    anim: event.animation_key != null ? event.animation_key : (known.anim || '') },
+            count: event.combo || 1,
+            senderName: event.sender_name || 'Someone', senderAvatar: event.sender_avatar,
+            recipientName: event.recipient_name || 'someone', recipientId: event.recipient_id, mine: false,
           });
         }
       }else if(event.event === 'hand_raised'){
@@ -885,23 +909,61 @@ function currentSeats(){
 }
 
 function seatHTML(p, idx){
+  const num = `<span class="seat-num">${idx + 1}</span>`;
   if(p.empty){
-    return `<div class="mic-seat empty ${p.locked?'locked':''}" data-seat-idx="${idx}"><div class="avatar-frame">${p.locked?ic('lock'):ic('plus')}</div><span class="uname">${p.locked?'Locked':'Empty seat'}</span></div>`;
+    return `<div class="mic-seat empty ${p.locked?'locked':''}" data-seat-idx="${idx}"><div class="avatar-frame">${p.locked?ic('lock'):ic('mic')}</div>${num}</div>`;
   }
+  const hostId = STATE.activeRoom && STATE.activeRoom.hostId;
+  const isHostSeat = p.userId != null && hostId != null && p.userId === hostId;
   const crown = p.giftsReceived && p.giftsReceived === Math.max(...currentSeats().filter(s=>!s.empty).map(s=>s.giftsReceived||0)) && p.giftsReceived>0
     ? `<span class="seat-crown">${ic('crown')}</span>` : '';
+  const tally = p.giftsReceived ? (typeof formatScore === 'function' ? formatScore(p.giftsReceived) : p.giftsReceived) : '';
   return `<div class="mic-seat ${p.muted?'muted':'speaking'} ${p.requesting?'requesting':''}" data-seat-idx="${idx}">
       ${crown}
-      <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${p.userId && isModeratorId(p.userId) ? `<span class="seat-mod" title="Moderator" aria-label="Moderator">${ic('shield')}</span>` : ''}${p.level?`<span class="seat-level">Lv ${escapeHTML(p.level)}</span>`:''}</div>
+      <div class="vibra-ring ${p.speaking?'speaking':''}"><img class="avatar" src="${imgSrc(p.avatar)}">${isHostSeat ? '<span class="seat-host">HOST</span>' : ''}${p.userId && isModeratorId(p.userId) ? `<span class="seat-mod" title="Moderator" aria-label="Moderator">${ic('shield')}</span>` : ''}${p.level && !isHostSeat ? `<span class="seat-level">Lv ${escapeHTML(p.level)}</span>` : ''}${p.muted ? `<span class="seat-mute-badge" aria-label="Muted">${ic('mic-off')}</span>` : ''}</div>
       <span class="uname">${p.isMe? 'You' : escapeHTML(p.name)}</span>
-      <span class="mic-status">${p.muted?ic('mic-off'):ic('mic')}</span>
-      ${p.giftsReceived?`<span class="seat-gift-pill">${ic('coins')}×${p.giftsReceived}</span>`:''}
+      ${tally ? `<span class="seat-gift-pill">${ic('coins')}${escapeHTML(tally)}</span>` : ''}
     </div>`;
 }
 
 function renderMicGrid(){
   const seats = currentSeats();
   document.getElementById('mic-grid').innerHTML = seats.map((p,idx)=> seatHTML(p, idx)).join('');
+  updateVoiceControlUI();
+  updateRoomStats();
+}
+
+/* ---- room chrome: stats row, Keep/Exit, minimised bubble ---- */
+function updateRoomStats(){
+  const room = STATE.activeRoom;
+  if(!room) return;
+  const num = document.getElementById('room-online-num');
+  if(!num) return;
+  num.textContent = Number(room.online || 0).toLocaleString();
+  document.getElementById('room-trophy').textContent = formatScore(room.giftTotal || 0);
+  const faces = currentSeats().filter(s => !s.empty).slice(0, 3);
+  document.getElementById('room-online-avatars').innerHTML = faces.map(s => `<img src="${imgSrc(s.avatar)}" alt="">`).join('');
+}
+function resetRoomChrome(){
+  const box = document.getElementById('chat-messages');
+  if(box) box.classList.remove('only-chat');
+  document.querySelectorAll('#chat-tabs [data-chat-tab]').forEach(b => b.classList.toggle('active', b.dataset.chatTab === 'all'));
+  const compose = document.getElementById('room-compose');
+  if(compose) compose.classList.remove('open');
+  const mini = document.getElementById('room-mini');
+  if(mini) mini.hidden = true;
+  ['entry-banner-layer', 'gift-banner-layer'].forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = ''; });
+  if(typeof FX !== 'undefined') FX.Combo.hide();
+}
+// "Keep": hide the room but stay in it (voice and chat keep running).
+function minimizeRoom(){
+  closeModal('room-exit-modal');
+  closeOverlay('screen-room');
+  document.getElementById('room-mini').hidden = false;
+}
+function restoreRoom(){
+  document.getElementById('room-mini').hidden = true;
+  openOverlay('screen-room');
 }
 // Toggles the 'speaking' class on existing seat elements without rebuilding their markup.
 // Falls back to a full render if the grid's DOM doesn't match the current seat count
@@ -1220,9 +1282,20 @@ function startRoomAmbience(){
   }, 5500));
 }
 
+// Name pills: level, Host, Mod.
+function msgPills(m){
+  let out = m.level ? `<span class="msg-pill lv">Lv ${escapeHTML(m.level)}</span>` : '';
+  const hostId = STATE.activeRoom && STATE.activeRoom.hostId;
+  if(m.userId != null && hostId != null && m.userId === hostId) out += '<span class="msg-pill host">Host</span>';
+  else if(m.userId != null && isModeratorId(m.userId)) out += '<span class="msg-pill mod">Mod</span>';
+  return out;
+}
 function chatMessageHTML(m){
   if(m.system){
     return `<div class="msg system"><div class="text">${escapeHTML(m.text)}</div></div>`;
+  }
+  if(m.notice){
+    return `<div class="msg notice"><div class="text"><b>${escapeHTML(m.name)}</b> ${escapeHTML(m.text)}</div></div>`;
   }
   const isMe = m.who === 'me';
   const displayName = m.displayName || (isMe ? (m._seatName || (STATE.currentUser?STATE.currentUser.name:'You')) : (DATA.getUser(m.who)||STATE.currentUser).name);
@@ -1233,7 +1306,7 @@ function chatMessageHTML(m){
   return `<div class="msg ${giftClass}" data-msg-name="${escapeAttr(displayName.split(' ')[0])}" data-msg-text="${escapeAttr(m.text)}">
     <img class="avatar" src="${imgSrc(avatar)}">
     <div class="msg-body">
-      <div class="msg-head"><span class="uname">${escapeHTML(displayName.split(' ')[0])}</span><span class="time">${time}</span></div>
+      <div class="msg-head"><span class="uname">${escapeHTML(displayName.split(' ')[0])}${msgPills(m)}</span><span class="time">${escapeHTML(time)}</span></div>
       ${replyBlock}
       <div class="text">${escapeHTML(m.text)}</div>
     </div>
@@ -1303,6 +1376,8 @@ function sendMessage(){
 
 function updateVoiceControlUI(){
   const micBtn = document.getElementById('vc-mic');
+  if(!micBtn) return;
+  micBtn.hidden = isApiActiveRoom() && STATE.mySeatIndex < 0;
   micBtn.classList.toggle('off', !micOn);
   micBtn.querySelector('.ic').innerHTML = ic(micOn ? 'mic' : 'mic-off');
   const spBtn = document.getElementById('vc-speaker');
@@ -1357,6 +1432,7 @@ function leaveRoom(){
   STATE.activeRoom = null;
   STATE.mySeatIndex = -1;
   closeOverlay('screen-room');
+  resetRoomChrome();
   showToast('You left the room', 'info');
   if(leaving) leaving.then(()=> STATE.currentUser && refreshApiRooms().then(renderHome));
 }
@@ -1591,111 +1667,146 @@ function handleRoomMoreAction(action){
 }
 
 /* ---------------------------- GIFTS (chat.js) ----------------------------- */
+/* ---------------------------- GIFTS (gifts.js) ------------------------------
+   The catalog comes from the server in real mode (DATA.giftCatalog in demo).
+   animation_key: '' flies to the seat, 'burst' adds sparkles, any other key is
+   a full-screen effect from giftfx.js. */
+let giftCatalog = [];
+function giftTier(cost){ return cost >= 1000 ? 'premium' : cost >= 99 ? 'popular' : 'classic'; }
+function fallbackAnim(cost){ return cost >= 1000 ? 'rocket' : cost >= 99 ? 'burst' : ''; }
+async function loadGiftCatalog(){
+  if(VIBRA_CONFIG.DEMO_DATA){
+    giftCatalog = DATA.giftCatalog.map(g => ({ id: g.id, emoji: g.emoji, name: g.name, cost: g.cost, anim: fallbackAnim(g.cost) }));
+  } else {
+    try{
+      const rows = await Api.listGifts();
+      giftCatalog = rows.map(g => ({ id: g.id, emoji: g.emoji, name: g.name, cost: g.cost, anim: g.animation_key || '' }));
+    }catch(e){ console.error('Could not load gifts', e); }
+  }
+  giftCatalog.sort((a, b) => a.cost - b.cost);
+  renderGiftGrid();
+}
+function findGift(id){ return giftCatalog.find(g => String(g.id) === String(id)); }
 function renderGiftGrid(){
-  document.getElementById('gift-grid').innerHTML = DATA.giftCatalog.map(g=>`
-    <div class="gift-item" data-gift-id="${g.id}">
-      <span class="emoji">${g.emoji}</span>
-      <span class="gname">${g.name}</span>
-      <span class="gcost">${ic('coins')} ${g.cost}</span>
-    </div>`).join('');
+  const grid = document.getElementById('gift-grid');
+  if(!grid) return;
+  const tab = STATE.giftTab || 'classic';
+  const list = giftCatalog.filter(g => giftTier(g.cost) === tab);
+  grid.innerHTML = list.length ? list.map(g => `
+    <button type="button" class="gift-item ${String(STATE.selectedGift) === String(g.id) ? 'selected' : ''}" data-gift-id="${escapeAttr(g.id)}">
+      ${g.anim && g.anim !== 'burst' ? '<span class="tier">FX</span>' : ''}
+      <span class="emoji">${escapeHTML(g.emoji)}</span>
+      <span class="gname">${escapeHTML(g.name)}</span>
+      <span class="gcost">${ic('coins')} ${Number(g.cost).toLocaleString()}</span>
+    </button>`).join('') : emptyStateHTML('🎁', 'No gifts here yet', '');
+  updateGiftAffordability();
+}
+// Everyone on a seat except you.
+function giftRecipients(){
+  const seats = currentSeats();
+  return seats.filter(s => !s.empty && !s.isMe).map(s => ({
+    id: s.srcUserId || s.userId || s.id, name: s.name, avatar: s.avatar, seatIdx: seats.indexOf(s),
+  })).filter(r => r.id != null);
+}
+function renderGiftRecipients(){
+  const box = document.getElementById('gift-recipients');
+  const list = giftRecipients();
+  const chosen = STATE.giftRecipient;
+  if(chosen && !list.some(r => String(r.id) === String(chosen.id))) list.unshift({ ...chosen, seatIdx: null });
+  if(!STATE.giftRecipient && list.length) STATE.giftRecipient = list[0];
+  STATE._giftRecipientList = list;
+  box.innerHTML = list.length ? list.map(r => `
+    <button type="button" class="${STATE.giftRecipient && String(STATE.giftRecipient.id) === String(r.id) ? 'active' : ''}" data-gift-to="${escapeAttr(r.id)}">
+      <img src="${imgSrc(r.avatar)}" alt=""><span>${escapeHTML(String(r.name || '').split(' ')[0])}</span>
+    </button>`).join('') : '<span class="gift-to-empty">Nobody on a seat to gift yet</span>';
+  updateGiftSendState();
 }
 function openGiftModal(recipient, seatIdx){
-  STATE.giftRecipient = recipient;
+  const rid = recipient ? (recipient.srcUserId || recipient.userId || recipient.id) : null;
+  const isMe = STATE.currentUser && rid != null && String(rid) === String(STATE.currentUser.id);
+  STATE.giftRecipient = (recipient && !isMe && rid != null) ? { id: rid, name: recipient.name, avatar: recipient.avatar } : null;
   STATE.giftSeatIdx = (typeof seatIdx === 'number') ? seatIdx : null;
-  STATE.selectedGift = null;
-  document.getElementById('gift-recipient-avatar').src = recipient.avatar;
-  document.getElementById('gift-recipient-name').textContent = recipient.name.split(' ')[0];
+  STATE.giftQty = STATE.giftQty || 1;
   document.getElementById('gift-modal-balance').textContent = getWallet().toLocaleString();
-  document.querySelectorAll('.gift-item').forEach(el=>el.classList.remove('selected'));
-  updateGiftAffordability();
+  if(!giftCatalog.length) loadGiftCatalog(); else renderGiftGrid();
+  renderGiftRecipients();
   openModal('gift-modal');
 }
 function updateGiftAffordability(){
   const balance = getWallet();
-  document.querySelectorAll('.gift-item').forEach(el=>{
-    const gift = DATA.giftCatalog.find(g=>g.id===el.dataset.giftId);
-    if(gift) el.classList.toggle('unaffordable', gift.cost > balance);
+  document.querySelectorAll('#gift-grid .gift-item').forEach(el => {
+    const gift = findGift(el.dataset.giftId);
+    if(gift) el.classList.toggle('unaffordable', gift.cost * (STATE.giftQty || 1) > balance);
+  });
+  updateGiftSendState();
+}
+function updateGiftSendState(){
+  const btn = document.getElementById('gift-send-btn');
+  if(!btn) return;
+  const gift = findGift(STATE.selectedGift);
+  const affordable = !!gift && gift.cost * (STATE.giftQty || 1) <= getWallet();
+  btn.disabled = !(gift && STATE.giftRecipient && affordable);
+  btn.textContent = gift && !affordable ? 'Not enough coins' : 'Send';
+}
+
+// Sends are chained so fast Combo taps go out one after another.
+let giftSending = Promise.resolve();
+function sendGift(fromCombo){
+  const gift = findGift(STATE.selectedGift);
+  const to = STATE.giftRecipient;
+  const qty = STATE.giftQty || 1;
+  if(!gift){ showToast('Choose a gift first', 'error'); return; }
+  if(!to){ showToast('Choose who to send it to', 'error'); return; }
+  if(getWallet() < gift.cost * qty){ showToast("You don't have enough coins", 'error'); FX.Combo.hide(); return; }
+  closeModal('gift-modal');
+  const isApiRoom = isApiActiveRoom() && !VIBRA_CONFIG.DEMO_DATA && typeof to.id === 'number';
+  giftSending = giftSending.then(async () => {
+    if(isApiRoom){
+      try{
+        const res = await Api.sendGift(STATE.activeRoom.id, to.id, gift.id, qty);
+        STATE.walletBalance = res.balance;
+      }catch(err){
+        showToast(err.message || 'Could not send gift', 'error');
+        FX.Combo.hide();
+        return;
+      }
+    } else {
+      setWallet(getWallet() - gift.cost * qty);
+      const tx = Storage.get(Storage.KEYS.TX, []);
+      tx.unshift({id:'t'+Date.now(), type:'sent', label:`Sent ${gift.name} to ${to.name}`, time:'Just now', amount:-gift.cost * qty, positive:false});
+      Storage.set(Storage.KEYS.TX, tx);
+    }
+    updateWalletUI();
+    const me = STATE.currentUser || {};
+    playGiftEffects({ gift, count: qty, senderName: me.name || 'You', senderAvatar: me.avatar,
+      recipientName: to.name, recipientId: to.id, mine: true });
+    if(fromCombo) FX.Combo.bump(FX.Combo.count + 1);
+    else FX.Combo.show(() => sendGift(true), 1);
   });
 }
-function sendGift(){
-  if(!STATE.selectedGift){ showToast('Choose a gift first', 'error'); return; }
-  const gift = DATA.giftCatalog.find(g=>g.id===STATE.selectedGift);
-  const balance = getWallet();
-  if(balance < gift.cost){ showToast("You don't have enough coins", 'error'); return; }
 
-  const isApiRoom = STATE.activeRoom && typeof STATE.activeRoom.id === 'number';
-  const recipientId = STATE.giftRecipient && (STATE.giftRecipient.srcUserId || STATE.giftRecipient.userId || STATE.giftRecipient.id);
-
-  if(!VIBRA_CONFIG.DEMO_DATA && isApiRoom && recipientId && typeof recipientId === 'number'){
-    const giftNumericId = parseInt(String(gift.id).replace(/\D/g, '') || '1', 10);
-    closeModal('gift-modal');
-    Api.sendGift(STATE.activeRoom.id, recipientId, giftNumericId, 1).then((res)=>{
-      STATE.walletBalance = res.balance;
-      playGiftAnimation(gift.emoji, gift.cost, 1);
-      updateWalletUI();
-      showToast('Gift sent! 🎁', 'success');
-      appendChatMessage({who:'me', gift:true, text:`🎉 You sent a ${gift.name} to ${STATE.giftRecipient.name.split(' ')[0]}`});
-    }).catch(err => {
-      showToast(err.message || 'Could not send gift', 'error');
-    });
-    return;
-  }
-
-  setWallet(balance - gift.cost);
-
-  const tx = Storage.get(Storage.KEYS.TX, []);
-  tx.unshift({id:'t'+Date.now(), type:'sent', label:`Sent ${gift.name} to ${STATE.giftRecipient.name.split(' ')[0]}`, time:'Just now', amount:-gift.cost, positive:false});
-  Storage.set(Storage.KEYS.TX, tx);
-
-  const history = Storage.get(Storage.KEYS.GIFT_HISTORY, []);
-  history.unshift({giftId:gift.id, to:STATE.giftRecipient.id, time:Date.now()});
-  Storage.set(Storage.KEYS.GIFT_HISTORY, history);
-
-  // combo tracking: same recipient + same gift within 4s = combo
-  const key = STATE.giftRecipient.id + ':' + gift.id;
-  const now = Date.now();
-  STATE.giftCombo = (STATE.lastGiftKey === key && now - STATE.lastGiftTime < 4000) ? STATE.giftCombo + 1 : 1;
-  STATE.lastGiftKey = key;
-  STATE.lastGiftTime = now;
-
-  // bump the seat's received-gift counter if this targeted a mic seat
-  if(typeof STATE.giftSeatIdx === 'number' && STATE.giftSeatIdx !== null){
-    const seat = currentSeats()[STATE.giftSeatIdx];
-    if(seat){ seat.giftsReceived = (seat.giftsReceived||0) + gift.cost; }
-  }
-
-  closeModal('gift-modal');
-  playGiftAnimation(gift.emoji, gift.cost, STATE.giftCombo);
-  if(typeof STATE.giftSeatIdx === 'number' && STATE.giftSeatIdx !== null) renderMicGrid();
-
-  if(document.getElementById('screen-room').classList.contains('active')){
-    const comboText = STATE.giftCombo > 1 ? ` x${STATE.giftCombo}` : '';
-    appendChatMessage({who:'me', gift:true, text:`🎉 You sent a ${gift.name} to ${STATE.giftRecipient.name.split(' ')[0]}${comboText}`});
-  }
-  showToast(`Gift sent successfully`, 'success');
-  updateWalletUI();
+function seatIndexForUser(userId){
+  return currentSeats().findIndex(s => !s.empty && String(s.userId || s.srcUserId || s.id) === String(userId));
 }
-function playGiftAnimation(emoji, cost, combo){
-  const layer = document.getElementById('gift-anim-layer');
-  const big = cost >= 500;
-  const el = document.createElement('div');
-  el.className = 'gift-fly' + (big ? ' big' : '');
-  el.textContent = emoji;
-  layer.appendChild(el);
-  setTimeout(()=> el.remove(), 1100);
-
-  if(big){
-    const flash = document.createElement('div');
-    flash.className = 'gift-flash';
-    layer.appendChild(flash);
-    setTimeout(()=> flash.remove(), 1000);
-  }
-  if(combo > 1){
-    const comboEl = document.createElement('div');
-    comboEl.className = 'gift-combo';
-    comboEl.textContent = `x${combo}`;
-    layer.appendChild(comboEl);
-    setTimeout(()=> comboEl.remove(), 900);
+// One gift = flying gift + banner + chat line (+ sparkles or a full-screen effect),
+// and the trophy / seat tallies go up. Runs for the sender and for everyone else.
+function playGiftEffects(g){
+  const { gift, count } = g;
+  const idx = seatIndexForUser(g.recipientId);
+  const seatEl = idx > -1 ? document.querySelector(`#mic-grid [data-seat-idx="${idx}"]`) : null;
+  const info = { senderName: g.senderName, senderAvatar: g.senderAvatar, recipientName: g.recipientName, emoji: gift.emoji, name: gift.name, count };
+  FX.flyTo(gift.emoji, g.mine ? document.getElementById('vc-gift') : null, seatEl);
+  if(gift.anim === 'burst'){ if(seatEl) setTimeout(() => FX.burstAt(seatEl, 46), 900); }
+  else if(gift.anim){ FX.fullscreen(gift.anim, info); }
+  FX.giftBanner(info);
+  appendChatMessage({ who: g.mine ? 'me' : 'gift', gift: true, displayName: g.senderName, avatarUrl: g.senderAvatar,
+    text: `sent ${g.recipientName} ${gift.emoji} ${gift.name} ×${count}` });
+  const value = (Number(gift.cost) || 0) * count;
+  if(STATE.activeRoom){ STATE.activeRoom.giftTotal = (STATE.activeRoom.giftTotal || 0) + value; updateRoomStats(); }
+  if(idx > -1){
+    const seat = currentSeats()[idx];
+    seat.giftsReceived = (seat.giftsReceived || 0) + value;
+    setTimeout(renderMicGrid, 1300);   // after the gift has landed
   }
 }
 
@@ -2051,6 +2162,10 @@ function onUserEvent(event){
     }
     const tab = document.getElementById('tab-messages');
     if(tab && !tab.classList.contains('hidden')) renderMessagesList();
+  } else if(event.event === 'gift_global'){
+    FX.globalBanner({ senderName: event.sender_name, senderAvatar: event.sender_avatar, recipientName: event.recipient_name,
+                      emoji: event.gift_emoji, count: event.combo, roomName: event.room_name },
+      () => { if(!STATE.activeRoom || STATE.activeRoom.id !== event.room_id) openRoom(event.room_id); else restoreRoom(); });
   } else if(event.event === 'notification_new'){
     refreshNotifBadge();
   }
@@ -2471,7 +2586,7 @@ function bindDiscover(){
 }
 
 function bindRoomScreen(){
-  document.getElementById('room-back').addEventListener('click', leaveRoom);
+  document.getElementById('room-back').addEventListener('click', ()=> openModal('room-exit-modal'));
   document.getElementById('room-share').addEventListener('click', ()=> VIBRA_CONFIG.DEMO_DATA ? showToast('Room link copied to clipboard', 'success') : shareRoom());
   document.getElementById('room-more').addEventListener('click', ()=>{
     renderRoomMoreSheet();
@@ -2521,7 +2636,7 @@ function bindRoomScreen(){
     if(seat && seat.empty) requestSeat(idx);
     else if(seat) openSeatProfile(idx);
   });
-  document.querySelector('.host-block').addEventListener('click', ()=>{
+  document.getElementById('host-ring').addEventListener('click', ()=>{
     if(!STATE.activeRoom) return;
     const host = DATA.getUser(STATE.activeRoom.hostId) || STATE.activeRoom.hostDisplay || STATE.currentUser;
     if(!STATE.isHost) openGiftModal(host);
@@ -2686,8 +2801,9 @@ function bindRoomScreen(){
   document.getElementById('vc-mic').addEventListener('click', toggleMicrophone);
   document.getElementById('vc-speaker').addEventListener('click', toggleSpeaker);
   document.getElementById('vc-hand').addEventListener('click', handleHandButton);
-  document.getElementById('vc-leave').addEventListener('click', leaveRoom);
+  document.getElementById('vc-leave').addEventListener('click', ()=>{ closeModal('room-exit-modal'); leaveRoom(); });
   document.getElementById('vc-participants').addEventListener('click', ()=>{
+    closeModal('room-apps-modal');
     const seats = currentSeats().filter(p=>!p.empty);
     document.getElementById('participants-list').innerHTML = seats.length ? seats.map((p,realIdx)=>{
       const idx = currentSeats().indexOf(p);
@@ -2715,24 +2831,81 @@ function bindRoomScreen(){
   });
 }
 
+function bindRoomPartyUI(){
+  const compose = document.getElementById('room-compose');
+  const input = document.getElementById('chat-input');
+  document.getElementById('say-hi').addEventListener('click', ()=>{ compose.classList.add('open'); input.focus(); });
+  // Close the composer again when you tap away with nothing typed.
+  input.addEventListener('blur', ()=> setTimeout(()=>{
+    if(!input.value.trim() && !compose.contains(document.activeElement) && !document.getElementById('emoji-picker').classList.contains('show')){
+      compose.classList.remove('open');
+    }
+  }, 180));
+  document.getElementById('chat-tabs').addEventListener('click', e=>{
+    const b = e.target.closest('[data-chat-tab]');
+    if(!b) return;
+    document.querySelectorAll('#chat-tabs [data-chat-tab]').forEach(x => x.classList.toggle('active', x === b));
+    document.getElementById('chat-messages').classList.toggle('only-chat', b.dataset.chatTab === 'chat');
+  });
+  document.getElementById('vc-apps').addEventListener('click', ()=>{
+    document.getElementById('tool-effects-label').textContent = FX.enabled() ? 'Effects on' : 'Effects off';
+    openModal('room-apps-modal');
+  });
+  document.getElementById('room-tools').addEventListener('click', e=>{
+    const b = e.target.closest('[data-tool]');
+    if(!b || b.dataset.tool === 'people') return;   // People has its own handler
+    closeModal('room-apps-modal');
+    const tool = b.dataset.tool;
+    if(tool === 'invite') shareRoom();
+    else if(tool === 'mic'){ if(STATE.liveKitRoom) openMicPicker(); else showToast('Voice is not connected yet', 'info'); }
+    else if(tool === 'reactions') document.getElementById('quick-reaction-bar').classList.toggle('hide');
+    else if(tool === 'effects'){ FX.setEnabled(!FX.enabled()); showToast(FX.enabled() ? 'Gift effects on' : 'Gift effects off', 'info'); }
+    else if(tool === 'clean'){ document.getElementById('chat-messages').innerHTML = ''; showToast('Chat cleared on your screen', 'info'); }
+    else if(tool === 'options'){ renderRoomMoreSheet(); openModal('room-more-modal'); }
+  });
+  document.getElementById('room-keep').addEventListener('click', minimizeRoom);
+  document.getElementById('room-mini').addEventListener('click', restoreRoom);
+}
+
 function bindGifts(){
   document.getElementById('gift-grid').addEventListener('click', e=>{
     const item = e.target.closest('[data-gift-id]');
     if(!item) return;
-    if(item.classList.contains('unaffordable')){
-      showToast("You don't have enough coins for this gift", 'error');
-      return;
-    }
-    document.querySelectorAll('.gift-item').forEach(el=>el.classList.remove('selected'));
-    item.classList.add('selected');
+    // Select it either way, so Send can never fire a different, hidden gift.
+    if(item.classList.contains('unaffordable')) showToast("You don't have enough coins for this gift", 'error');
     STATE.selectedGift = item.dataset.giftId;
+    document.querySelectorAll('#gift-grid .gift-item').forEach(el => el.classList.toggle('selected', el === item));
+    updateGiftSendState();
   });
-  document.getElementById('gift-send-btn').addEventListener('click', sendGift);
+  document.getElementById('gift-tabs').addEventListener('click', e=>{
+    const b = e.target.closest('[data-gift-tab]');
+    if(!b) return;
+    STATE.giftTab = b.dataset.giftTab;
+    document.querySelectorAll('#gift-tabs [data-gift-tab]').forEach(x => x.classList.toggle('active', x === b));
+    const sel = findGift(STATE.selectedGift);
+    if(sel && giftTier(sel.cost) !== STATE.giftTab) STATE.selectedGift = null;   // only send what you can see
+    renderGiftGrid();
+  });
+  document.getElementById('gift-qty').addEventListener('click', e=>{
+    const b = e.target.closest('[data-qty]');
+    if(!b) return;
+    STATE.giftQty = Number(b.dataset.qty) || 1;
+    document.querySelectorAll('#gift-qty [data-qty]').forEach(x => x.classList.toggle('active', x === b));
+    updateGiftAffordability();
+  });
+  document.getElementById('gift-recipients').addEventListener('click', e=>{
+    const b = e.target.closest('[data-gift-to]');
+    if(!b) return;
+    const r = (STATE._giftRecipientList || []).find(x => String(x.id) === b.dataset.giftTo);
+    if(r){ STATE.giftRecipient = r; renderGiftRecipients(); }
+  });
+  document.getElementById('gift-send-btn').addEventListener('click', () => sendGift(false));
+  document.getElementById('gift-get-coins').addEventListener('click', ()=>{ closeModal('gift-modal'); openWallet(); });
   document.body.addEventListener('click', e=>{
     const giftUserBtn = e.target.closest('[data-gift-user]');
     if(giftUserBtn){ openGiftModal(DATA.getUser(giftUserBtn.dataset.giftUser)); return; }
   });
-  renderGiftGrid();
+  if(VIBRA_CONFIG.DEMO_DATA) loadGiftCatalog();   // real mode loads it after login
 }
 
 function bindWallet(){
@@ -2902,7 +3075,7 @@ function bindGlobalKeyboard(){
     if(openModalEl){ openModalEl.classList.remove('show'); return; }
     const openOverlayEl = document.querySelector('.overlay-screen.active');
     if(openOverlayEl){
-      if(openOverlayEl.id === 'screen-room'){ leaveRoom(); }
+      if(openOverlayEl.id === 'screen-room'){ openModal('room-exit-modal'); }
       else { closeOverlay(openOverlayEl.id); }
     }
   });
@@ -2922,6 +3095,7 @@ function init(){
   bindHome();
   bindDiscover();
   bindRoomScreen();
+  bindRoomPartyUI();
   bindGifts();
   bindWallet();
   bindProfileAndMessages();

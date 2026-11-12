@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.rooms.models import Gift, Room
-from apps.rooms.realtime import broadcast_to_room
+from apps.rooms.realtime import broadcast_to_everyone, broadcast_to_room
 from apps.rooms.serializers import GiftSerializer, SendGiftSerializer
 
 from .models import CoinPackage, PaymentOrder
@@ -125,13 +125,23 @@ class SendGiftView(APIView):
 
         # Fan out to the room's WebSocket group so every client sees the gift
         # animation live. Failures are logged, never raised: the gift is already paid.
-        broadcast_to_room(room.id, "gift.sent", {
+        sender_profile = getattr(request.user, "profile", None)
+        recipient_profile = getattr(recipient, "profile", None)
+        payload = {
             "sender_id": request.user.id,
-            "sender_name": request.user.username,
+            "sender_name": sender_profile.username if sender_profile else request.user.username,
+            "sender_avatar": sender_profile.avatar_url if sender_profile else "",
             "recipient_id": recipient.id,
+            "recipient_name": recipient_profile.username if recipient_profile else recipient.username,
+            "recipient_avatar": recipient_profile.avatar_url if recipient_profile else "",
             "gift_id": gift.id,
             "gift_name": gift.name,
             "gift_emoji": gift.emoji,
+            "gift_cost": gift.cost,
+            "animation_key": gift.animation_key,
             "combo": data["combo"],
-        })
+        }
+        broadcast_to_room(room.id, "gift.sent", payload)
+        if gift.cost * data["combo"] >= settings.GLOBAL_GIFT_MIN:
+            broadcast_to_everyone("gift.global", {**payload, "room_id": room.id, "room_name": room.name})
         return Response({"gift_event_id": event.id, "balance": get_balance(request.user)})

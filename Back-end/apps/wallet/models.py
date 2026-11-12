@@ -13,10 +13,12 @@ class Transaction(models.Model):
     TYPE_PURCHASE = "purchase"
     TYPE_GIFT_SENT = "gift_sent"
     TYPE_GIFT_RECEIVED = "gift_received"
+    TYPE_BONUS = "bonus"  # free coins (welcome bonus, admin grants)
     TYPE_CHOICES = [
         (TYPE_PURCHASE, "Purchase"),
         (TYPE_GIFT_SENT, "Gift sent"),
         (TYPE_GIFT_RECEIVED, "Gift received"),
+        (TYPE_BONUS, "Bonus"),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transactions")

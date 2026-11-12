@@ -52,7 +52,7 @@ class RoomCreateTests(RoomBase):
         self.assertEqual(res.status_code, 201, res.content)
         room = Room.objects.get(id=res.data["id"])
         self.assertEqual(room.host, self.host)
-        self.assertEqual(room.seats.count(), 9)
+        self.assertEqual(room.seats.count(), 10)
         seat0 = room.seats.get(position=0)
         self.assertEqual(seat0.user, self.host)
         self.assertFalse(seat0.is_muted)
@@ -67,7 +67,7 @@ class RoomCreateTests(RoomBase):
         room = Room.objects.get(id=res.data["id"])
         self.assertTrue(room.is_live)
         self.assertEqual(room.thumbnail_seed, "")
-        self.assertEqual(room.seats.count(), 9)
+        self.assertEqual(room.seats.count(), 10)
 
     def test_validation(self):
         self.assertEqual(self.create_room(category="nonsense").status_code, 400)
@@ -107,7 +107,7 @@ class JoinLeaveTests(RoomBase):
     def test_join_returns_snapshot_and_is_idempotent(self):
         first = self.alice_c.post(f"/api/rooms/{self.rid}/join/")
         self.assertEqual(first.status_code, 200, first.content)
-        self.assertEqual(len(first.data["seats"]), 9)
+        self.assertEqual(len(first.data["seats"]), 10)
         self.assertEqual(first.data["seats"][0]["user"]["username"], "hosty")
         self.assertEqual(first.data["online_count"], 2)
         again = self.alice_c.post(f"/api/rooms/{self.rid}/join/")

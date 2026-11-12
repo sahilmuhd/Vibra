@@ -35,11 +35,15 @@ class SeatSerializer(serializers.ModelSerializer):
 
 class RoomDetailSerializer(RoomListSerializer):
     seats = SeatSerializer(many=True, read_only=True)
+    # Coins gifted in this room so far (the trophy score).
+    gift_total = serializers.IntegerField(read_only=True, default=0)
     moderator_ids = serializers.SerializerMethodField()
     hand_raises = serializers.SerializerMethodField()
 
     class Meta(RoomListSerializer.Meta):
-        fields = RoomListSerializer.Meta.fields + ["seats", "voice_room_name", "moderator_ids", "hand_raises"]
+        fields = RoomListSerializer.Meta.fields + [
+            "seats", "voice_room_name", "moderator_ids", "hand_raises", "gift_total",
+        ]
 
     def get_hand_raises(self, obj):
         # Oldest first: the host answers requests in the order they came in.

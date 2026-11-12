@@ -1100,6 +1100,281 @@ svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical
 .achieve-row .ic svg{ width:22px; height:22px; }
 .msg-reply-quote svg{ width:12px; height:12px; }
 .sub svg{ width:13px; height:13px; }
+
+/* =====================================================================
+   PHASE 1 — party-room look (starry purple room, 2×5 seats, gift FX)
+   ===================================================================== */
+.sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+#screen-room.room-screen{ background:#14062b; display:flex; flex-direction:column; overflow:hidden; }
+#screen-room .room-bg{ position:absolute; inset:0; z-index:0; pointer-events:none;
+  background:radial-gradient(120% 70% at 50% 0%, #4a1693 0%, #2a0c5a 38%, #160632 70%, #0d0420 100%); }
+#screen-room .room-bg .glow{ position:absolute; left:50%; top:30%; width:520px; height:520px; transform:translate(-50%,-50%);
+  background:radial-gradient(circle, rgba(214,72,255,.28), transparent 62%); filter:blur(8px); }
+#screen-room .room-bg .stars{ position:absolute; inset:-50%; background-repeat:repeat; opacity:.75; }
+#screen-room .room-bg .stars.s1{ background-image:
+  radial-gradient(1.2px 1.2px at 20px 30px, #fff, transparent), radial-gradient(1px 1px at 90px 120px, #e9d5ff, transparent),
+  radial-gradient(1.4px 1.4px at 160px 60px, #fff, transparent), radial-gradient(1px 1px at 230px 190px, #f5d0fe, transparent),
+  radial-gradient(1.2px 1.2px at 300px 90px, #fff, transparent);
+  background-size:320px 240px; animation:starDrift 90s linear infinite; }
+#screen-room .room-bg .stars.s2{ background-image:
+  radial-gradient(1.6px 1.6px at 60px 200px, rgba(255,255,255,.9), transparent), radial-gradient(1px 1px at 200px 20px, #fff, transparent),
+  radial-gradient(1.3px 1.3px at 280px 150px, #fce7f3, transparent);
+  background-size:360px 280px; opacity:.5; animation:starDrift 140s linear infinite reverse, twinkle 4s ease-in-out infinite; }
+@keyframes starDrift{ to{ transform:translate3d(-320px,-240px,0); } }
+@keyframes twinkle{ 50%{ opacity:.2; } }
+
+/* top bar */
+#screen-room .room-top{ position:relative; z-index:2; display:flex; align-items:center; gap:10px; padding:calc(10px + env(safe-area-inset-top)) 14px 6px; }
+#screen-room .room-owner{ padding:0; border-radius:12px; overflow:hidden; width:42px; height:42px; flex-shrink:0; border:2px solid rgba(255,255,255,.18); background:#2a1050; }
+#screen-room .room-owner .avatar{ width:100%; height:100%; border-radius:10px; border:0; }
+#screen-room .room-titles{ flex:1; min-width:0; }
+#screen-room .room-titles h2{ font-size:15.5px; font-weight:800; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#screen-room .room-sub{ display:flex; align-items:center; gap:6px; font-size:11px; color:rgba(255,255,255,.62); min-width:0; white-space:nowrap; overflow:hidden; }
+#screen-room .room-sub #host-name{ overflow:hidden; text-overflow:ellipsis; }
+#screen-room .room-sub .sep{ opacity:.5; }
+#screen-room .room-sub .connection-status-pill{ margin-left:2px; transform:scale(.9); transform-origin:left center; }
+#screen-room .room-top-btn{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); color:#fff; flex-shrink:0; }
+#screen-room .room-top-btn svg{ width:18px; height:18px; }
+#screen-room .room-top-btn.power{ background:rgba(255,255,255,.12); }
+
+/* stats row */
+#screen-room .room-stats{ position:relative; z-index:2; display:flex; align-items:center; justify-content:space-between; padding:2px 14px 6px; }
+#screen-room .trophy-chip{ display:inline-flex; align-items:center; gap:5px; padding:4px 10px 4px 7px; border-radius:999px;
+  background:linear-gradient(90deg, rgba(255,200,87,.22), rgba(255,200,87,.06)); border:1px solid rgba(255,200,87,.35); color:#ffd88a; font-weight:800; font-size:12px; }
+#screen-room .trophy-chip svg{ width:14px; height:14px; color:#ffc857; }
+#screen-room .online-chip{ display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 3px; border-radius:999px; background:rgba(0,0,0,.28);
+  border:1px solid rgba(255,255,255,.12); color:#fff; font-size:12px; font-weight:700; }
+#screen-room .online-chip svg{ width:13px; height:13px; opacity:.75; }
+#screen-room .online-chip .stack{ display:flex; }
+#screen-room .online-chip .stack img{ width:24px; height:24px; border-radius:50%; border:2px solid #2a0c5a; margin-left:-7px; object-fit:cover; background:#3b1670; }
+#screen-room .online-chip .stack img:first-child{ margin-left:0; }
+
+/* body: seats + chat */
+#screen-room .room-body{ position:relative; z-index:1; flex:1; min-height:0; display:flex; flex-direction:column; }
+#screen-room .voice-area{ padding:10px 10px 4px; background:none; border:0; }
+#screen-room .mic-grid{ display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:12px 4px; max-width:560px; margin:0 auto; width:100%; }
+#screen-room .mic-seat{ display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0; }
+#screen-room .mic-seat .seat-num{ font-size:10px; color:rgba(255,255,255,.45); font-weight:700; line-height:1; }
+#screen-room .mic-seat .uname{ font-size:10.5px; color:rgba(255,255,255,.88); max-width:100%; padding:0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; }
+#screen-room .mic-seat .avatar{ width:54px; height:54px; }
+#screen-room .mic-seat.empty .avatar-frame{ width:54px; height:54px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.16), rgba(255,255,255,.05)); border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.7); border-style:solid; }
+#screen-room .mic-seat.empty .avatar-frame svg{ width:20px; height:20px; }
+#screen-room .mic-seat.empty.locked .avatar-frame{ color:#ffc857; border-color:rgba(255,200,87,.35); }
+#screen-room .seat-mute-badge{ position:absolute; right:-2px; bottom:-2px; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background:#ff4d6d; color:#fff; border:2px solid #24093f; z-index:3; }
+#screen-room .seat-mute-badge svg{ width:10px; height:10px; }
+#screen-room .seat-host{ position:absolute; top:-6px; left:50%; transform:translateX(-50%); z-index:3; font-size:8.5px; font-weight:800; letter-spacing:.3px;
+  padding:1px 6px; border-radius:999px; background:linear-gradient(90deg,#ffc857,#ff9f43); color:#3b1a00; white-space:nowrap; }
+#screen-room .seat-level{ top:auto; bottom:-5px; right:auto; left:50%; transform:translateX(-50%); }
+/* speaking ripple: two expanding rings */
+#screen-room .vibra-ring{ position:relative; }
+#screen-room .vibra-ring::before, #screen-room .vibra-ring::after{ content:''; position:absolute; inset:-3px; border-radius:50%; border:2px solid rgba(255,96,214,.85);
+  opacity:0; pointer-events:none; animation:none; }
+#screen-room .vibra-ring.speaking::before{ animation:ripple 1.4s ease-out infinite; opacity:1; }
+#screen-room .vibra-ring.speaking::after{ animation:ripple 1.4s ease-out .7s infinite; opacity:1; }
+@keyframes ripple{ 0%{ transform:scale(1); opacity:.9; } 100%{ transform:scale(1.45); opacity:0; } }
+#screen-room .mic-seat.fx-hit .avatar, #screen-room .mic-seat.fx-hit .avatar-frame{ animation:seatHit .6s ease; }
+@keyframes seatHit{ 40%{ transform:scale(1.18); box-shadow:0 0 24px rgba(255,200,87,.8); } }
+
+/* chat tabs + area */
+#screen-room .chat-tabs{ display:flex; gap:18px; padding:6px 16px 4px; }
+#screen-room .chat-tabs button{ font-size:13.5px; font-weight:700; color:rgba(255,255,255,.5); padding:2px 0; position:relative; }
+#screen-room .chat-tabs button.active{ color:#fff; }
+#screen-room .chat-tabs button.active::after{ content:''; position:absolute; left:20%; right:20%; bottom:-3px; height:3px; border-radius:3px; background:linear-gradient(90deg,#ff3ea5,#b721ff); }
+#screen-room .chat-zone{ position:relative; flex:1; min-height:0; display:flex; }
+#screen-room .chat-messages{ flex:1; padding:6px 64px 10px 12px; gap:8px; background:none; }
+#screen-room .chat-messages.only-chat .msg.system, #screen-room .chat-messages.only-chat .msg.gift, #screen-room .chat-messages.only-chat .msg.notice{ display:none; }
+#screen-room .msg{ align-items:flex-start; }
+#screen-room .msg .avatar{ width:30px; height:30px; }
+#screen-room .msg .msg-body{ background:rgba(20,6,43,.45); border:1px solid rgba(255,255,255,.07); border-radius:4px 14px 14px 14px; padding:6px 10px 7px; max-width:100%; }
+#screen-room .msg .msg-body .uname{ font-size:12px; color:#e9d5ff; }
+#screen-room .msg .msg-body .text{ font-size:13.5px; color:#fff; word-break:break-word; }
+#screen-room .msg.system{ justify-content:flex-start; }
+#screen-room .msg.system .text{ background:rgba(183,33,255,.18); border:1px solid rgba(183,33,255,.32); color:#f5e9ff; border-radius:12px; padding:8px 12px; font-size:12.5px; text-align:left; line-height:1.5; }
+#screen-room .msg.notice .text{ display:inline-block; background:rgba(0,0,0,.28); color:rgba(255,255,255,.82); border-radius:999px; padding:4px 11px; font-size:12px; }
+#screen-room .msg.notice b{ color:#fff; }
+#screen-room .msg.gift .msg-body{ background:linear-gradient(90deg, rgba(255,62,165,.28), rgba(183,33,255,.18)); border-color:rgba(255,62,165,.35); }
+#screen-room .msg.gift .text{ color:#ffd88a; font-weight:700; }
+.msg-pill{ display:inline-flex; align-items:center; height:15px; padding:0 5px; border-radius:999px; font-size:9px; font-weight:800; margin-left:4px; vertical-align:1px; color:#fff; }
+.msg-pill.lv{ background:linear-gradient(90deg,#7b2ff7,#b721ff); }
+.msg-pill.host{ background:linear-gradient(90deg,#ffc857,#ff9f43); color:#3b1a00; }
+.msg-pill.mod{ background:linear-gradient(90deg,#10b981,#0ea5e9); }
+#screen-room .quick-reaction-bar{ position:absolute; right:8px; bottom:10px; flex-direction:column; gap:6px; padding:6px 4px; background:rgba(0,0,0,.22);
+  border:1px solid rgba(255,255,255,.08); border-radius:999px; z-index:3; display:flex; }
+#screen-room .quick-reaction-bar.hide{ display:none; }
+#screen-room .quick-reaction-btn{ width:34px; height:34px; font-size:18px; }
+#screen-room .scroll-bottom-fab{ bottom:12px; }
+
+/* banners in the chat zone */
+.entry-banner-layer{ position:absolute; left:0; right:0; top:4px; height:40px; z-index:4; pointer-events:none; overflow:hidden; }
+.fx-entry{ position:absolute; top:2px; left:100%; display:flex; align-items:center; gap:7px; height:34px; padding:0 16px 0 4px; border-radius:999px; white-space:nowrap;
+  background:linear-gradient(90deg, #10b981, #22c55e 45%, rgba(34,197,94,.0)); color:#fff; font-size:12.5px; box-shadow:0 4px 18px rgba(16,185,129,.35);
+  animation:entrySweep 2.7s cubic-bezier(.2,.8,.2,1) forwards; }
+.fx-entry .avatar{ width:28px; height:28px; border:2px solid rgba(255,255,255,.7); }
+.fx-entry .lv{ font-size:9.5px; font-weight:800; background:rgba(0,0,0,.25); border-radius:999px; padding:1px 6px; }
+.fx-entry .spark{ width:60px; height:2px; background:linear-gradient(90deg,#fff,transparent); opacity:.8; }
+@keyframes entrySweep{ 0%{ left:100%; } 20%,75%{ left:12px; } 100%{ left:-110%; } }
+.gift-banner-layer{ position:absolute; left:8px; top:44px; z-index:4; pointer-events:none; display:flex; flex-direction:column; gap:6px; }
+.fx-gift-banner{ display:flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px; min-width:210px;
+  background:linear-gradient(90deg, #ff3ea5, #b721ff 70%, rgba(183,33,255,.15)); box-shadow:0 6px 20px rgba(255,62,165,.35);
+  animation:giftIn .45s cubic-bezier(.2,.9,.3,1.3) both; }
+.fx-gift-banner.out{ animation:giftOut .38s ease forwards; }
+.fx-gift-banner .avatar{ width:32px; height:32px; border:2px solid rgba(255,255,255,.75); }
+.fx-gift-banner .t{ display:flex; flex-direction:column; line-height:1.15; color:#fff; font-size:11px; min-width:0; }
+.fx-gift-banner .t b{ font-size:12.5px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fx-gift-banner .t span{ opacity:.9; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fx-gift-banner .emo{ font-size:28px; margin-left:auto; filter:drop-shadow(0 2px 6px rgba(0,0,0,.4)); }
+.fx-gift-banner .cnt{ font-size:22px; font-weight:900; font-style:italic; color:#ffe27a; text-shadow:0 2px 0 #b45309, 0 0 12px rgba(255,200,87,.8); animation:cntPop .5s .2s ease both; }
+@keyframes giftIn{ from{ transform:translateX(-110%); opacity:0; } to{ transform:none; opacity:1; } }
+@keyframes giftOut{ to{ transform:translateX(-110%); opacity:0; } }
+@keyframes cntPop{ 0%{ transform:scale(2.2); opacity:0; } 100%{ transform:scale(1); opacity:1; } }
+
+/* bottom bar */
+#screen-room .room-bottom{ position:relative; z-index:3; }
+#screen-room .room-compose{ display:none; background:#1c0a38; border-top:1px solid rgba(255,255,255,.08); }
+#screen-room .room-compose.open{ display:block; }
+#screen-room .room-compose .chat-input-bar{ background:transparent; border:0; }
+#screen-room .voice-controls{ display:flex; align-items:center; gap:8px; padding:8px 12px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(0deg, rgba(10,3,24,.9), rgba(10,3,24,0)); border:0; }
+#screen-room .say-hi{ flex:1; min-width:0; display:flex; align-items:center; gap:7px; height:40px; padding:0 14px; border-radius:999px; background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.7); font-size:13px; }
+#screen-room .say-hi svg{ width:16px; height:16px; }
+#screen-room .vc-btn{ display:block; }
+#screen-room .vc-btn .ic{ width:40px; height:40px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; }
+#screen-room .vc-btn .ic svg{ width:19px; height:19px; }
+#screen-room .vc-btn.off .ic{ background:rgba(255,77,109,.2); border-color:rgba(255,77,109,.45); color:#ff8fa3; }
+#screen-room #vc-mic[hidden]{ display:none; }
+#screen-room .vc-btn{ position:relative; }
+#screen-room .gift-fab{ width:46px; height:46px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:#fff;
+  background:conic-gradient(from 210deg, #ff3ea5, #ffc857, #ff7a45, #ff3ea5); box-shadow:0 6px 20px rgba(255,62,165,.45); animation:giftBob 2.6s ease-in-out infinite; }
+#screen-room .gift-fab svg{ width:22px; height:22px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+@keyframes giftBob{ 50%{ transform:translateY(-3px) rotate(-6deg); } }
+
+/* Combo button */
+.fx-combo{ position:absolute; right:14px; bottom:calc(70px + env(safe-area-inset-bottom)); width:78px; height:78px; border-radius:50%; z-index:30; display:none;
+  align-items:center; justify-content:center; flex-direction:column; color:#fff; background:radial-gradient(circle at 35% 30%, #ffb347, #ff6a00 65%, #d9480f);
+  box-shadow:0 10px 30px rgba(255,106,0,.55), inset 0 2px 0 rgba(255,255,255,.4); }
+.fx-combo.show{ display:flex; animation:comboIn .3s cubic-bezier(.2,.9,.3,1.4); }
+.fx-combo:active{ transform:scale(.92); }
+.fx-combo svg{ position:absolute; inset:-5px; width:calc(100% + 10px); height:calc(100% + 10px); transform:rotate(-90deg); }
+.fx-combo .trk{ fill:none; stroke:rgba(255,255,255,.18); stroke-width:3; }
+.fx-combo .ring{ fill:none; stroke:#fff; stroke-width:3; stroke-linecap:round; stroke-dasharray:125.7; stroke-dashoffset:0; animation:comboRing 5s linear forwards; }
+.fx-combo .lbl{ font-size:13px; font-weight:900; letter-spacing:.3px; text-shadow:0 1px 2px rgba(0,0,0,.35); }
+.fx-combo .num{ font-size:12px; font-weight:800; opacity:.95; }
+.fx-combo .num.bump{ animation:cntPop .35s ease; }
+@keyframes comboRing{ to{ stroke-dashoffset:125.7; } }
+@keyframes comboIn{ from{ transform:scale(.3); opacity:0; } }
+
+/* flying gift + full-screen effects */
+.fx-fly{ position:fixed; left:0; top:0; z-index:500; font-size:44px; pointer-events:none; filter:drop-shadow(0 4px 12px rgba(0,0,0,.45)); }
+.fx-canvas{ position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:501; }
+.fx-stage{ position:fixed; inset:0; z-index:600; pointer-events:none; overflow:hidden; background:radial-gradient(circle at 50% 45%, rgba(40,8,80,.55), rgba(5,0,15,.75));
+  animation:stageIn .35s ease both; }
+.fx-stage.out{ animation:stageOut .45s ease forwards; }
+.fx-stage .fx-canvas{ position:absolute; }
+@keyframes stageIn{ from{ opacity:0; } }
+@keyframes stageOut{ to{ opacity:0; } }
+.fx-big{ position:absolute; left:50%; top:45%; font-size:150px; line-height:1; transform:translate(-50%,-50%); filter:drop-shadow(0 0 40px rgba(255,200,87,.6)); }
+.fx-caption{ position:absolute; left:50%; bottom:18%; transform:translateX(-50%); max-width:88vw; text-align:center; padding:10px 18px; border-radius:999px;
+  background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.15); color:#fff; font-size:14px; animation:capIn .5s .3s ease both; }
+.fx-caption b{ color:#ffd88a; }
+@keyframes capIn{ from{ opacity:0; transform:translate(-50%,16px); } }
+.fx-pop{ animation:fxPop 2.6s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes fxPop{ 0%{ transform:translate(-50%,-50%) scale(.2); opacity:0; } 20%{ transform:translate(-50%,-50%) scale(1.15); opacity:1; } 30%,85%{ transform:translate(-50%,-50%) scale(1); opacity:1; } 100%{ transform:translate(-50%,-50%) scale(1.3); opacity:0; } }
+.fx-rocket{ top:auto; bottom:-20%; animation:rocketGo 3.2s cubic-bezier(.5,0,.4,1) forwards; }
+@keyframes rocketGo{ 0%{ bottom:-25%; } 30%{ bottom:22%; transform:translate(-50%,0) rotate(-2deg); } 40%{ transform:translate(-49%,0) rotate(2deg); } 50%{ bottom:24%; transform:translate(-51%,0); } 100%{ bottom:130%; transform:translate(-50%,0) scale(.7); } }
+.fx-rays{ position:absolute; left:50%; top:45%; width:900px; height:900px; transform:translate(-50%,-50%); border-radius:50%; opacity:.55;
+  background:repeating-conic-gradient(from 0deg, rgba(255,200,87,.35) 0 8deg, transparent 8deg 22deg); animation:spin 9s linear infinite; mask:radial-gradient(circle, #000 20%, transparent 62%); -webkit-mask:radial-gradient(circle, #000 20%, transparent 62%); }
+.fx-rays.slow{ animation-duration:18s; background:repeating-conic-gradient(from 0deg, rgba(183,33,255,.35) 0 10deg, transparent 10deg 24deg); }
+@keyframes spin{ to{ transform:translate(-50%,-50%) rotate(360deg); } }
+.fx-descend{ animation:descend 3.2s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes descend{ 0%{ top:-20%; opacity:0; } 30%{ top:45%; opacity:1; } 38%{ top:45%; opacity:1; transform:translate(-50%,-50%) scale(1.12); } 46%,88%{ top:45%; opacity:1; transform:translate(-50%,-50%) scale(1); } 100%{ top:45%; opacity:0; transform:translate(-50%,-50%) scale(1.4); } }
+.fx-road{ position:absolute; left:0; right:0; top:52%; height:6px; background:linear-gradient(90deg, transparent, #2fe6d8, #b721ff, transparent); filter:blur(1px); box-shadow:0 0 30px #2fe6d8; }
+.fx-drive{ font-size:130px; animation:drive 3.2s cubic-bezier(.6,0,.3,1) forwards; }
+@keyframes drive{ 0%{ left:-30%; } 35%,60%{ left:50%; transform:translate(-50%,-50%) scaleX(-1); } 100%{ left:140%; transform:translate(-50%,-50%) scaleX(-1); } }
+.fx-rise{ animation:rise 3.6s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes rise{ 0%{ top:120%; opacity:1; } 35%,85%{ top:45%; opacity:1; transform:translate(-50%,-50%) scale(1); } 100%{ top:45%; opacity:0; transform:translate(-50%,-50%) scale(1.25); } }
+.fx-dragon{ font-size:170px; animation:dragonFly 3.8s ease-in-out forwards; }
+@keyframes dragonFly{ 0%{ left:130%; top:30%; transform:translate(-50%,-50%) scaleX(1); } 30%{ top:52%; } 55%{ left:50%; top:40%; } 80%{ top:50%; } 100%{ left:-40%; top:35%; } }
+.fx-stage.fx-shake{ animation:stageIn .35s ease both, shake .5s .3s ease-in-out 3; }
+@keyframes shake{ 25%{ transform:translate(4px,-3px); } 75%{ transform:translate(-4px,3px); } }
+
+/* global banner (any screen) */
+.fx-global{ position:fixed; top:calc(8px + env(safe-area-inset-top)); left:100%; z-index:700; display:flex; align-items:center; gap:8px; height:38px; padding:0 16px 0 4px;
+  border-radius:999px; white-space:nowrap; color:#fff; font-size:12.5px; cursor:pointer;
+  background:linear-gradient(90deg, #ff7a45, #ff3ea5 45%, #b721ff); box-shadow:0 8px 28px rgba(255,62,165,.45), 0 0 0 1px rgba(255,255,255,.25) inset;
+  animation:globalSweep 7.2s linear forwards; }
+.fx-global .avatar{ width:30px; height:30px; border:2px solid #fff; }
+.fx-global b{ color:#fff3c4; }
+.fx-global .room{ opacity:.85; font-size:11px; }
+@keyframes globalSweep{ from{ transform:translateX(0); } to{ transform:translateX(calc(-100vw - 100% - 20px)); } }
+
+/* minimised room bubble */
+.room-mini{ position:fixed; right:14px; bottom:calc(84px + env(safe-area-inset-bottom)); z-index:450; width:58px; height:58px; border-radius:50%; padding:3px;
+  background:conic-gradient(#ff3ea5, #b721ff, #2fe6d8, #ff3ea5); box-shadow:0 10px 26px rgba(183,33,255,.5); }
+.room-mini .avatar{ width:100%; height:100%; border:2px solid #14062b; }
+.room-mini .pulse{ position:absolute; inset:-4px; border-radius:50%; border:2px solid rgba(255,62,165,.7); animation:ripple 1.6s ease-out infinite; }
+.room-mini[hidden]{ display:none; }
+
+/* dark sheets: tools, exit, gift */
+.modal-sheet.dark-sheet{ background:#1a0a33; border-top:1px solid rgba(255,255,255,.1); }
+.tool-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px 6px; padding:4px 2px 10px; }
+.tool-grid button{ display:flex; flex-direction:column; align-items:center; gap:7px; font-size:11.5px; color:rgba(255,255,255,.85); }
+.tool-grid .ic{ width:50px; height:50px; border-radius:16px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); color:#fff; }
+.tool-grid .ic svg{ width:22px; height:22px; }
+#room-exit-modal{ background:rgba(5,0,15,.86); }
+.exit-choices{ display:flex; flex-direction:column; gap:34px; align-items:center; }
+.exit-choice{ display:flex; flex-direction:column; align-items:center; gap:10px; color:#fff; font-size:14px; font-weight:600; }
+.exit-choice .ic{ width:66px; height:66px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#b721ff,#ff3ea5); box-shadow:0 10px 30px rgba(183,33,255,.5); }
+.exit-choice .ic svg{ width:28px; height:28px; }
+
+.modal-sheet.gift-sheet{ background:#120724; border-top:1px solid rgba(255,255,255,.1); padding:12px 12px calc(12px + env(safe-area-inset-bottom)); }
+.gift-top{ display:flex; align-items:center; gap:10px; padding:2px 4px 10px; }
+.gift-balance{ display:inline-flex; align-items:center; gap:6px; color:#ffd88a; font-weight:800; font-size:15px; }
+.gift-balance svg{ width:17px; height:17px; color:#ffc857; }
+.gift-recharge{ display:inline-flex; align-items:center; gap:2px; color:#ffb4e0; font-size:12.5px; font-weight:600; }
+.gift-recharge svg{ width:14px; height:14px; }
+.gift-close{ margin-left:auto; width:34px; height:34px; }
+.gift-tabs{ display:flex; gap:18px; padding:0 4px 8px; border-bottom:1px solid rgba(255,255,255,.07); }
+.gift-tabs button{ font-size:13.5px; font-weight:700; color:rgba(255,255,255,.45); position:relative; padding:4px 0; }
+.gift-tabs button.active{ color:#fff; }
+.gift-tabs button.active::after{ content:''; position:absolute; left:15%; right:15%; bottom:-9px; height:3px; border-radius:3px; background:linear-gradient(90deg,#ff3ea5,#b721ff); }
+.gift-sheet .gift-grid{ grid-template-columns:repeat(4,1fr); gap:8px; padding:10px 0 6px; max-height:38vh; overflow-y:auto; margin:0; }
+.gift-sheet .gift-item{ background:rgba(255,255,255,.04); border:1.5px solid transparent; padding:10px 4px 8px; gap:3px; border-radius:14px; position:relative; }
+.gift-sheet .gift-item .emoji{ font-size:34px; line-height:1.1; transition:transform .2s ease; }
+.gift-sheet .gift-item .gname{ font-size:11px; color:#fff; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.gift-sheet .gift-item .gcost{ font-size:10.5px; }
+.gift-sheet .gift-item.selected{ background:rgba(255,62,165,.12); border-color:#ff3ea5; }
+.gift-sheet .gift-item.selected .emoji{ transform:scale(1.15); animation:giftBob 1.4s ease-in-out infinite; }
+.gift-sheet .gift-item .tier{ position:absolute; top:5px; right:5px; font-size:8px; font-weight:800; padding:1px 5px; border-radius:999px; background:linear-gradient(90deg,#ffc857,#ff7a45); color:#3b1a00; }
+.gift-foot{ display:flex; flex-direction:column; gap:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,.07); }
+.gift-to{ display:flex; align-items:center; gap:8px; min-width:0; }
+.gift-to .lbl{ font-size:12px; color:rgba(255,255,255,.55); flex-shrink:0; }
+.gift-recipients{ display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; padding:3px; }
+.gift-recipients::-webkit-scrollbar{ display:none; }
+.gift-recipients button{ position:relative; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:9.5px; color:rgba(255,255,255,.7); width:46px; }
+.gift-recipients img{ width:34px; height:34px; border-radius:50%; border:2px solid transparent; object-fit:cover; background:#2a1050; }
+.gift-recipients button.active img{ border-color:#ff3ea5; box-shadow:0 0 0 2px rgba(255,62,165,.3); }
+.gift-recipients button.active{ color:#fff; }
+.gift-recipients span{ max-width:46px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gift-send-row{ display:flex; align-items:center; gap:8px; }
+.gift-qty{ display:flex; flex:1; min-width:0; background:rgba(255,255,255,.06); border-radius:999px; padding:3px; overflow-x:auto; scrollbar-width:none; }
+.gift-qty button{ flex:1; min-width:30px; height:30px; border-radius:999px; font-size:12px; font-weight:700; color:rgba(255,255,255,.65); }
+.gift-qty button.active{ background:rgba(255,255,255,.16); color:#fff; }
+.gift-send{ height:36px; padding:0 22px; border-radius:999px; font-weight:800; font-size:14px; color:#fff; background:linear-gradient(90deg,#ff3ea5,#b721ff); box-shadow:0 6px 18px rgba(255,62,165,.4); flex-shrink:0; }
+.gift-send:disabled{ opacity:.45; box-shadow:none; }
+
+@media (min-width:1080px){
+  #screen-room .mic-grid{ max-width:620px; gap:18px 10px; }
+  #screen-room .mic-seat .avatar, #screen-room .mic-seat.empty .avatar-frame{ width:62px; height:62px; }
+  #screen-room .chat-messages{ padding-right:72px; }
+}
+@media (prefers-reduced-motion: reduce){
+  #screen-room .room-bg .stars, #screen-room .gift-fab, .fx-gift-banner, .fx-combo.show{ animation:none !important; }
+  #screen-room .vibra-ring.speaking::before{ animation:none; opacity:1; transform:scale(1.15); }
+  #screen-room .vibra-ring.speaking::after{ display:none; }
+}
 </style>
 </head>
 <body>
@@ -1420,64 +1695,78 @@ svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical
   </div>
 
   <!-- ============================= OVERLAY: ROOM / CHAT ============================= -->
-  <div class="overlay-screen" id="screen-room">
-    <div class="ov-header">
-      <button class="back-btn" id="room-back" aria-label="Leave room"><i data-lucide="arrow-left"></i></button>
-      <div class="title-block">
+  <div class="overlay-screen room-screen" id="screen-room">
+    <div class="room-bg" aria-hidden="true"><div class="stars s1"></div><div class="stars s2"></div><div class="glow"></div></div>
+    <div class="room-top">
+      <button class="room-owner" id="host-ring" type="button" aria-label="Host profile"><img class="avatar" id="host-avatar" src="" alt=""></button>
+      <div class="room-titles">
         <h2 id="room-title">Room</h2>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div class="sub" id="room-online-count" style="cursor:pointer;" title="View participants">0 online</div>
-          <span class="connection-status-pill live" id="room-connection-status"><span class="dot"></span>Live</span>
-        </div>
+        <div class="room-sub"><span id="room-id-label">ID —</span><span class="sep">·</span><span id="host-name">Host</span>
+          <span class="connection-status-pill live" id="room-connection-status"><span class="dot"></span>Live</span></div>
       </div>
-      <button class="icon-btn" id="room-share" aria-label="Share room"><i data-lucide="share-2"></i></button>
-      <button class="icon-btn" id="room-more" aria-label="Room options"><i data-lucide="more-vertical"></i></button>
+      <button class="room-top-btn" id="room-share" aria-label="Share room"><i data-lucide="share-2"></i></button>
+      <button class="room-top-btn" id="room-more" aria-label="Room options"><i data-lucide="more-vertical"></i></button>
+      <button class="room-top-btn power" id="room-back" aria-label="Leave or minimise room"><i data-lucide="power"></i></button>
     </div>
-    <div class="ov-body" style="display:flex; flex-direction:column; padding:0; overflow:hidden; position:relative;">
+    <div class="room-stats">
+      <div class="trophy-chip" title="Coins gifted in this room"><i data-lucide="trophy"></i><span id="room-trophy">0</span></div>
+      <button class="online-chip" id="room-online-count" type="button" aria-label="People in this room">
+        <span class="stack" id="room-online-avatars"></span><span id="room-online-num">0</span><i data-lucide="users"></i>
+      </button>
+    </div>
+    <div class="room-body">
       <div id="floating-reactions-container" class="floating-reactions-container"></div>
-      <div class="voice-area">
-        <div class="host-block">
-          <div class="vibra-ring" id="host-ring"><img class="avatar" id="host-avatar" src="" alt=""></div>
-          <div class="role"><i data-lucide="crown" style="width:13px;height:13px;color:var(--gold);"></i> HOST</div>
-          <div class="uname" id="host-name">Host</div>
+      <div class="voice-area"><div class="mic-grid" id="mic-grid"></div></div>
+      <div class="chat-tabs" id="chat-tabs" role="tablist">
+        <button type="button" class="active" data-chat-tab="all" role="tab">All</button>
+        <button type="button" data-chat-tab="chat" role="tab">Chat</button>
+      </div>
+      <div class="chat-zone">
+        <div class="entry-banner-layer" id="entry-banner-layer"></div>
+        <div class="gift-banner-layer" id="gift-banner-layer"></div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <button class="scroll-bottom-fab" id="scroll-bottom-fab"><span class="dot"></span>New messages</button>
+        <div class="quick-reaction-bar" id="quick-reaction-bar">
+          <button type="button" class="quick-reaction-btn" data-reaction="❤️" title="Love">❤️</button>
+          <button type="button" class="quick-reaction-btn" data-reaction="🔥" title="Fire">🔥</button>
+          <button type="button" class="quick-reaction-btn" data-reaction="👏" title="Applause">👏</button>
+          <button type="button" class="quick-reaction-btn" data-reaction="😂" title="Laugh">😂</button>
+          <button type="button" class="quick-reaction-btn" data-reaction="🎉" title="Party">🎉</button>
         </div>
-        <div class="mic-grid" id="mic-grid"></div>
       </div>
-      <div class="chat-messages" id="chat-messages"></div>
-      <button class="scroll-bottom-fab" id="scroll-bottom-fab"><span class="dot"></span>New messages</button>
     </div>
-    <div style="position:relative;">
-      <div class="quick-reaction-bar" id="quick-reaction-bar">
-        <button type="button" class="quick-reaction-btn" data-reaction="❤️" title="Love">❤️</button>
-        <button type="button" class="quick-reaction-btn" data-reaction="🔥" title="Fire">🔥</button>
-        <button type="button" class="quick-reaction-btn" data-reaction="👏" title="Applause">👏</button>
-        <button type="button" class="quick-reaction-btn" data-reaction="😂" title="Laugh">😂</button>
-        <button type="button" class="quick-reaction-btn" data-reaction="🎉" title="Party">🎉</button>
-      </div>
-      <div class="reply-preview" id="reply-preview">
-        <div class="bar"></div>
-        <div class="body"><span class="who" id="reply-who"></span><div class="snip" id="reply-snip"></div></div>
-        <button class="close" id="reply-cancel"><i data-lucide="x"></i></button>
-      </div>
-      <div class="emoji-picker" id="emoji-picker"></div>
-      <div class="mention-suggestions" id="mention-suggestions"></div>
-      <div class="chat-input-bar">
-        <button class="icon-btn" id="emoji-toggle" aria-label="Open emoji picker"><i data-lucide="smile"></i></button>
-        <div class="input-wrap"><input type="text" id="chat-input" placeholder="Say something…" maxlength="200"></div>
-        <span class="char-counter" id="chat-char-counter" hidden>0/200</span>
-        <button class="icon-btn" id="gift-open-btn" aria-label="Send a gift"><i data-lucide="gift"></i></button>
-        <button class="send-btn" id="chat-send"><i data-lucide="send-horizontal"></i></button>
+    <div class="room-bottom">
+      <div class="room-compose" id="room-compose">
+        <div class="reply-preview" id="reply-preview">
+          <div class="bar"></div>
+          <div class="body"><span class="who" id="reply-who"></span><div class="snip" id="reply-snip"></div></div>
+          <button class="close" id="reply-cancel"><i data-lucide="x"></i></button>
+        </div>
+        <div class="emoji-picker" id="emoji-picker"></div>
+        <div class="mention-suggestions" id="mention-suggestions"></div>
+        <div class="chat-input-bar">
+          <button class="icon-btn" id="emoji-toggle" aria-label="Open emoji picker"><i data-lucide="smile"></i></button>
+          <div class="input-wrap"><input type="text" id="chat-input" placeholder="Say something…" maxlength="200"></div>
+          <span class="char-counter" id="chat-char-counter" hidden>0/200</span>
+          <button class="icon-btn" id="gift-open-btn" aria-label="Send a gift"><i data-lucide="gift"></i></button>
+          <button class="send-btn" id="chat-send"><i data-lucide="send-horizontal"></i></button>
+        </div>
       </div>
       <div class="voice-controls">
-        <button type="button" class="vc-btn" id="vc-mic"><span class="ic"><i data-lucide="mic"></i></span>Mic</button>
-        <button type="button" class="vc-btn" id="vc-speaker"><span class="ic"><i data-lucide="volume-2"></i></span>Speaker</button>
-        <button type="button" class="vc-btn" id="vc-gift"><span class="ic"><i data-lucide="gift"></i></span>Gift</button>
-        <button type="button" class="vc-btn" id="vc-hand"><span class="ic"><i data-lucide="hand"></i></span><span id="vc-hand-label">Raise</span></button>
-        <button type="button" class="vc-btn" id="vc-participants"><span class="ic"><i data-lucide="users"></i></span>People</button>
-        <button type="button" class="vc-btn leave" id="vc-leave"><span class="ic"><i data-lucide="log-out"></i></span>Leave</button>
+        <button type="button" class="say-hi" id="say-hi"><i data-lucide="message-circle"></i><span>Say Hi…</span></button>
+        <button type="button" class="vc-btn" id="vc-mic" aria-label="Microphone"><span class="ic"><i data-lucide="mic"></i></span></button>
+        <button type="button" class="vc-btn" id="vc-speaker" aria-label="Speaker"><span class="ic"><i data-lucide="volume-2"></i></span></button>
+        <button type="button" class="vc-btn" id="vc-hand" aria-label="Raise hand"><span class="ic"><i data-lucide="hand"></i></span><span class="sr-only" id="vc-hand-label">Raise</span></button>
+        <button type="button" class="vc-btn" id="vc-apps" aria-label="Tools"><span class="ic"><i data-lucide="layout-grid"></i></span></button>
+        <button type="button" class="gift-fab" id="vc-gift" aria-label="Send a gift"><i data-lucide="gift"></i></button>
       </div>
     </div>
   </div>
+
+  <!-- Minimised room (after "Keep") -->
+  <button type="button" class="room-mini" id="room-mini" aria-label="Back to the room" hidden>
+    <img class="avatar" id="room-mini-avatar" src="" alt=""><span class="pulse"></span>
+  </button>
 
   <!-- ============================= OVERLAY: WALLET ============================= -->
   <div class="overlay-screen" id="screen-wallet">
@@ -1578,12 +1867,55 @@ svg.lucide{ width:1.15em; height:1.15em; stroke-width:2; flex-shrink:0; vertical
 
   <!-- ============================= MODALS ============================= -->
   <div class="modal-backdrop" id="gift-modal">
-    <div class="modal-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-title">Send a gift <button class="icon-btn" aria-label="Close" data-close-modal="gift-modal"><i data-lucide="x"></i></button></div>
-      <div class="gift-recipient"><img class="avatar" id="gift-recipient-avatar" src="" style="width:34px;height:34px;flex-shrink:0;" alt=""><div style="min-width:0;"><div style="font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Sending to <span id="gift-recipient-name">Host</span></div><div style="font-size:11.5px; color:var(--text-secondary);" class="mono">🪙 <span id="gift-modal-balance">0</span> available</div></div></div>
+    <div class="modal-sheet gift-sheet">
+      <div class="gift-top">
+        <div class="gift-balance"><i data-lucide="coins"></i><span id="gift-modal-balance">0</span></div>
+        <button type="button" class="gift-recharge" id="gift-get-coins">Get coins <i data-lucide="chevron-right"></i></button>
+        <button class="icon-btn gift-close" aria-label="Close" data-close-modal="gift-modal"><i data-lucide="x"></i></button>
+      </div>
+      <div class="gift-tabs" id="gift-tabs" role="tablist">
+        <button type="button" class="active" data-gift-tab="classic">Classic</button>
+        <button type="button" data-gift-tab="popular">Popular</button>
+        <button type="button" data-gift-tab="premium">Premium</button>
+      </div>
       <div class="gift-grid" id="gift-grid"></div>
-      <button class="btn btn-primary btn-block" id="gift-send-btn" style="margin-top:6px;">Send Gift</button>
+      <div class="gift-foot">
+        <div class="gift-to">
+          <span class="lbl">To</span>
+          <div class="gift-recipients" id="gift-recipients"></div>
+        </div>
+        <div class="gift-send-row">
+          <div class="gift-qty" id="gift-qty" role="radiogroup" aria-label="Quantity">
+            <button type="button" class="active" data-qty="1">1</button><button type="button" data-qty="5">5</button><button type="button" data-qty="10">10</button><button type="button" data-qty="33">33</button><button type="button" data-qty="66">66</button><button type="button" data-qty="99">99</button>
+          </div>
+          <button class="gift-send" id="gift-send-btn">Send</button>
+        </div>
+        <span hidden id="gift-recipient-name"></span><img hidden id="gift-recipient-avatar" alt="">
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal-backdrop" id="room-apps-modal">
+    <div class="modal-sheet dark-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Tools <button class="icon-btn" aria-label="Close" data-close-modal="room-apps-modal"><i data-lucide="x"></i></button></div>
+      <div class="tool-grid" id="room-tools">
+        <button type="button" data-tool="invite"><span class="ic"><i data-lucide="user-plus"></i></span>Invite</button>
+        <button type="button" data-tool="people" id="vc-participants"><span class="ic"><i data-lucide="users"></i></span>People</button>
+        <button type="button" data-tool="mic"><span class="ic"><i data-lucide="mic"></i></span>Microphone</button>
+        <button type="button" data-tool="reactions"><span class="ic"><i data-lucide="smile-plus"></i></span>Reactions</button>
+        <button type="button" data-tool="effects"><span class="ic"><i data-lucide="sparkles"></i></span><span id="tool-effects-label">Effects on</span></button>
+        <button type="button" data-tool="clean"><span class="ic"><i data-lucide="eraser"></i></span>Clean chat</button>
+        <button type="button" data-tool="options"><span class="ic"><i data-lucide="settings-2"></i></span>Room options</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop center-align" id="room-exit-modal">
+    <div class="exit-choices">
+      <button type="button" class="exit-choice" id="room-keep"><span class="ic"><i data-lucide="minimize-2"></i></span>Keep</button>
+      <button type="button" class="exit-choice" id="vc-leave"><span class="ic"><i data-lucide="power"></i></span>Exit</button>
     </div>
   </div>
 
@@ -1798,6 +2130,7 @@ const DATA = (function(){
 <script src="https://unpkg.com/lucide@0.468.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
 <script src="api.js"></script>
+<script src="giftfx.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -2,7 +2,8 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, F, IntegerField, OuterRef, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
@@ -15,7 +16,7 @@ from apps.notifications.services import notify_followers_live
 
 from . import voice_admin
 from .models import (
-    HandRaise, Message, Report, Room, RoomBan, RoomModerator, RoomMute, RoomParticipant, Seat,
+    GiftEvent, HandRaise, Message, Report, Room, RoomBan, RoomModerator, RoomMute, RoomParticipant, Seat,
 )
 from .realtime import broadcast_to_room
 from .serializers import (
@@ -42,7 +43,14 @@ def room_queryset():
     return (
         Room.objects.select_related("host__profile")
         .prefetch_related("seats__user__profile", "moderators", "hand_raises__user__profile")
-        .annotate(online_total=Count("participants", distinct=True))
+        .annotate(
+            online_total=Count("participants", distinct=True),
+            gift_total=Coalesce(Subquery(
+                GiftEvent.objects.filter(room=OuterRef("pk")).values("room")
+                .annotate(t=Sum(F("gift__cost") * F("combo"))).values("t")[:1],
+                output_field=IntegerField(),
+            ), 0),
+        )
     )
 
 

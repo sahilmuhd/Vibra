@@ -15,7 +15,7 @@ class Room(models.Model):
     description = models.CharField(max_length=200, blank=True)
     host = models.ForeignKey(User, on_delete=models.CASCADE, related_name="hosted_rooms")
     thumbnail_seed = models.CharField(max_length=40, blank=True)
-    seat_count = models.PositiveSmallIntegerField(default=9)
+    seat_count = models.PositiveSmallIntegerField(default=10)  # 2 rows of 5
     is_live = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

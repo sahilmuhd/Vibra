@@ -41,3 +41,8 @@ def broadcast_to_room(room_id: int, event_type: str, payload: dict) -> None:
 def broadcast_to_user(user_id: int, event_type: str, payload: dict) -> None:
     """Send an event to every open /ws/me/ socket of one user (DMs, notifications)."""
     _broadcast(f"user_{user_id}", event_type, payload)
+
+
+def broadcast_to_everyone(event_type: str, payload: dict) -> None:
+    """Announce to every signed-in user with the app open (e.g. a big gift)."""
+    _broadcast("everyone", event_type, payload)

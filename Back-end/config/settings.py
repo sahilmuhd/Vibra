@@ -181,6 +181,11 @@ LIVEKIT_URL = config("LIVEKIT_URL", default="")
 # Push seat/mute/kick changes to live LiveKit sessions (needs all three values above).
 LIVEKIT_SYNC_ENABLED = bool(LIVEKIT_API_KEY and LIVEKIT_API_SECRET and LIVEKIT_URL)
 
+# --- Coins & gifts ---
+WELCOME_COINS = config("WELCOME_COINS", default=1000, cast=int)
+# Gifts worth at least this many coins (cost x combo) are announced in every room.
+GLOBAL_GIFT_MIN = config("GLOBAL_GIFT_MIN", default=2000, cast=int)
+
 # --- Email (password reset) ---
 # Set EMAIL_BACKEND to 'django.core.mail.backends.smtp.EmailBackend' in production
 # and provide the SMTP_* env vars in your Render dashboard.
