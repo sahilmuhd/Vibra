@@ -154,6 +154,8 @@ function showToast(message, type){
   el.className = `toast ${type}`;
   const icon = ic(type==='success' ? 'circle-check' : type==='error' ? 'triangle-alert' : 'info');
   el.innerHTML = `${icon}<span>${escapeHTML(message)}</span>`;
+  // Keep at most two on screen so they never bury the header.
+  while(stack.children.length >= 2) stack.firstElementChild.remove();
   stack.appendChild(el);
   setTimeout(()=> el.remove(), 3000);
 }
