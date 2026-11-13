@@ -136,6 +136,8 @@ function seededRandom(seed){
 function frameCls(key){ return typeof frameClass === 'function' ? frameClass(key) : ''; }
 function vipCls(vip){ return typeof vipNameClass === 'function' ? vipNameClass(vip) : ''; }
 function userBadges(u){ return typeof badgesHTML === 'function' ? badgesHTML(u) : ''; }
+function stickerOf(text){ return typeof stickerHTML === 'function' ? stickerHTML(text) : ''; }
+function voiceOf(v){ return v && typeof voiceBubbleHTML === 'function' ? voiceBubbleHTML(v) : ''; }
 
 /* ---------------------------- ICONS (Lucide) ------------------------------- */
 function ic(name){ return `<i data-lucide="${name}"></i>`; }
@@ -263,6 +265,8 @@ function profileToAccount(p){
     vip: p.vip ? (p.vip.tier || 0) : 0,
     frame: p.frame || '', mount: p.mount || '',
     is_admin: !!p.is_admin,
+    family: p.family || null, family_tag: p.family ? p.family.tag : '', cp: p.cp || null,
+    new_visitors: p.new_visitors || 0,
   };
 }
 
@@ -309,7 +313,8 @@ function enterApp(){
   if(window.innerWidth >= 1080){ document.getElementById('desktop-sidebar').style.display='flex'; if(VIBRA_CONFIG.DEMO_DATA){ document.getElementById('desktop-right').style.display='block'; document.querySelector('.desktop-layout').classList.add('has-rail'); } }
   const nb = document.getElementById('notif-badge');
   if(nb && !VIBRA_CONFIG.DEMO_DATA){ nb.style.display = 'none'; startNotifPolling(); startUserSocket(); refreshDMBadge(); loadBlocks(); loadGiftCatalog();
-    if(typeof refreshMe === 'function') refreshMe().then(() => maybeShowCheckin()); } // static "3" in the markup is demo data
+    if(typeof refreshMe === 'function') refreshMe().then(() => maybeShowCheckin());
+    if(typeof loadEvents === 'function') loadEvents(); } // static "3" in the markup is demo data
   refreshWallet();
   if(typeof renderHomeBanners === 'function') renderHomeBanners();
   renderHome();
@@ -321,9 +326,9 @@ function enterApp(){
 function renderStories(){
   const row = document.getElementById('stories-row');
   const storiesSection = row.closest('.section');
-  if(!VIBRA_CONFIG.DEMO_DATA){            // "Active now" was fabricated users
-    if(storiesSection) storiesSection.classList.add('hidden');
-    row.innerHTML = '';
+  if(!VIBRA_CONFIG.DEMO_DATA){            // real mode: people you follow who are in rooms
+    if(typeof renderFriendsLive === 'function' && STATE.currentUser) renderFriendsLive();
+    else { if(storiesSection) storiesSection.classList.add('hidden'); row.innerHTML = ''; }
     return;
   }
   if(storiesSection) storiesSection.classList.remove('hidden');
@@ -421,6 +426,7 @@ function emptyStateHTML(emoji, title, sub){
 }
 
 function renderHome(){
+  if(typeof renderUpcoming === 'function' && STATE.currentUser) renderUpcoming();
   renderStories();
   renderCategories();
   renderTrendingRooms();
@@ -550,11 +556,13 @@ async function openRoomInner(roomId){
         displayName: m.user ? m.user.username : 'Vibra',
         avatarUrl: m.user ? m.user.avatar_url : '',
         level: m.user && m.user.level, userId: m.user && m.user.id, vip: m.user && m.user.vip, isAdmin: m.user && m.user.is_admin,
+        voice: m.voice,
       })).join('');
     }catch(e){ box.innerHTML = ''; }
     box.scrollTop = box.scrollHeight;
     connectRoomSocket(roomId);
     connectVoice(roomId);
+    if(typeof loadCurrentGame === 'function') loadCurrentGame(roomId);
   }else{
     const seed = DATA.messagesSeed[roomId] || DATA.messagesSeed.default;
     box.innerHTML = seed.map(m=> chatMessageHTML(m)).join('');
@@ -572,7 +580,7 @@ async function openRoomInner(roomId){
   { const m = document.getElementById('tool-music'); if(m) m.hidden = !(isApiRoom && canModerate()); }
   if(STATE.currentUser){
     const me = STATE.currentUser;
-    FX.entryBanner({ name: me.name, avatar: me.avatar, level: me.level, vip: me.vip, admin: me.is_admin });
+    FX.entryBanner({ name: me.name, avatar: me.avatar, level: me.level, vip: me.vip, admin: me.is_admin, cp: me.cp ? me.cp.username : '' });
     if(me.mount && FX.mountEntry) FX.mountEntry({ mount: me.mount, name: me.name, avatar: me.avatar, vip: me.vip });
     appendChatMessage({ notice:true, name: STATE.currentUser.name, text:'joined the room' });
   }
@@ -731,11 +739,12 @@ function connectRoomSocket(roomId){
           displayName: event.user ? event.user.username : 'Vibra',
           avatarUrl: event.user ? event.user.avatar_url : '',
           level: event.user && event.user.level, userId: event.user && event.user.id, vip: event.user && event.user.vip, isAdmin: event.user && event.user.is_admin,
+          voice: event.voice,
         }));
         box.scrollTop = box.scrollHeight;
       }else if(event.event === 'presence_update' && event.action === 'joined' && event.user){
         if(!(STATE.currentUser && event.user.id === STATE.currentUser.id)){
-          FX.entryBanner({ name: event.user.username, avatar: event.user.avatar_url, level: event.user.level, vip: event.user.vip, admin: event.user.is_admin });
+          FX.entryBanner({ name: event.user.username, avatar: event.user.avatar_url, level: event.user.level, vip: event.user.vip, admin: event.user.is_admin, cp: event.user.cp_name });
           if(event.user.mount && FX.mountEntry) FX.mountEntry({ mount: event.user.mount, name: event.user.username, avatar: event.user.avatar_url, vip: event.user.vip });
           appendChatMessage({ notice:true, name: event.user.username, text:'joined the room' }, true);
         }
@@ -776,6 +785,8 @@ function connectRoomSocket(roomId){
         // Gifts move wealth/charm/VIP: pick up the new badges once the effects have played.
         clearTimeout(STATE.giftRefreshTimer);
         STATE.giftRefreshTimer = setTimeout(() => scheduleRoomRefresh(roomId), 2500);
+      }else if(event.event && event.event.startsWith('game_')){
+        if(typeof handleGameEvent === 'function') handleGameEvent(event);
       }else if(event.event === 'room_settings'){
         if(typeof applyRoomSettings === 'function') applyRoomSettings(event, true);
       }else if(event.event === 'room_level'){
@@ -1013,6 +1024,7 @@ function resetRoomChrome(){
   if(mini) mini.hidden = true;
   ['entry-banner-layer', 'gift-banner-layer'].forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = ''; });
   if(typeof clearRoomPlus === 'function') clearRoomPlus();
+  if(typeof hideGameCard === 'function'){ hideGameCard(); const w = document.getElementById('wheel-overlay'); if(w) w.hidden = true; }
   if(typeof FX !== 'undefined') FX.Combo.hide();
 }
 // "Keep": hide the room but stay in it (voice and chat keep running).
@@ -1370,12 +1382,15 @@ function chatMessageHTML(m){
   const giftClass = m.gift ? 'gift' : '';
   const replyBlock = m.replyTo ? `<div class="msg-reply-quote">${ic('corner-up-left')} ${escapeHTML(m.replyTo.name)}: ${escapeHTML(m.replyTo.text.slice(0,60))}</div>` : '';
   const vipN = Math.min(5, Number(m.vip) || 0);
-  return `<div class="msg ${giftClass}${vipN >= 3 ? ' vip3' : ''}" data-msg-name="${escapeAttr(displayName.split(' ')[0])}" data-msg-text="${escapeAttr(m.text)}">
+  const sticker = stickerOf(m.text);
+  const voice = voiceOf(m.voice);
+  const content = sticker || (voice ? voice + (m.text ? `<div>${escapeHTML(m.text)}</div>` : '') : escapeHTML(m.text));
+  return `<div class="msg ${giftClass}${vipN >= 3 ? ' vip3' : ''}${sticker ? ' has-sticker' : ''}" data-msg-name="${escapeAttr(displayName.split(' ')[0])}" data-msg-text="${escapeAttr(m.text)}">
     <img class="avatar" src="${imgSrc(avatar)}">
     <div class="msg-body">
       <div class="msg-head"><span class="uname"><span class="${vipCls(m.vip).trim()}">${escapeHTML(displayName.split(' ')[0])}</span>${msgPills(m)}</span><span class="time">${escapeHTML(time)}</span></div>
       ${replyBlock}
-      <div class="text">${escapeHTML(m.text)}</div>
+      <div class="text">${content}</div>
     </div>
   </div>`;
 }
@@ -2036,7 +2051,9 @@ function renderOwnProfile(){
       id: u.id, username: u.username, avatar_url: u.avatar, bio: u.bio, country: u.country,
       level: u.level || 1, followers_count: u.followers || 0, following_count: u.following || 0,
       live_room: null, wealth_level: u.wealth_level, charm_level: u.charm_level, vip: u.vip, vip_tier: u.vip, frame: u.frame, is_admin: u.is_admin,
+      family: u.family, cp: u.cp, new_visitors: u.new_visitors,
     }, true);
+    if(typeof loadBondZone === 'function') loadBondZone(u.id, u.username, u.avatar);
     return;
   }
   const selfAsProfileUser = {
@@ -2139,9 +2156,12 @@ function openDM(userId){
 function renderDMBody(){
   const body = document.getElementById('dm-body');
   const thread = dmThreads[STATE.activeDM] || [];
-  body.innerHTML = thread.map(m=>`
-    <div class="dm-msg ${m.who==='me'?'me':'them'}">${escapeHTML(m.text)}<div class="dm-time">${m.time}</div></div>
-  `).join('');
+  body.innerHTML = thread.map(m=>{
+    const sticker = stickerOf(m.text), voice = voiceOf(m.voice);
+    const cls = sticker ? ' sticker-msg' : voice ? ' voice-dm' : '';
+    const content = sticker || (voice ? voice + (m.text ? `<div>${escapeHTML(m.text)}</div>` : '') : escapeHTML(m.text));
+    return `<div class="dm-msg ${m.who==='me'?'me':'them'}${cls}">${content}<div class="dm-time">${escapeHTML(m.time)}</div></div>`;
+  }).join('');
   body.scrollTop = body.scrollHeight;
 }
 function sendDM(){
@@ -2173,7 +2193,7 @@ function sendDM(){
 
 function dmFromApi(m){
   const mine = STATE.currentUser && m.sender_id === STATE.currentUser.id;
-  return { who: mine ? 'me' : 'them', text: m.text,
+  return { who: mine ? 'me' : 'them', text: m.text, voice: m.voice || null,
            time: new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) };
 }
 function openApiDM(userId){
@@ -2236,7 +2256,9 @@ function onUserEvent(event){
       renderDMBody();
       Api.getThread(from.id).catch(()=>{}); // marks it read
     } else {
-      showToast(`${from.username || 'Someone'}: ${(event.message && event.message.text || '').slice(0, 60)}`, 'info');
+      const m = event.message || {};
+      const preview = m.voice ? '🎤 Voice message' : /^\[sticker:[a-z]+\]$/.test(m.text || '') ? 'sent a sticker' : (m.text || '').slice(0, 60);
+      showToast(`${from.username || 'Someone'}: ${preview}`, 'info');
       refreshDMBadge();
     }
     const tab = document.getElementById('tab-messages');
@@ -2247,6 +2269,11 @@ function onUserEvent(event){
       () => { if(!STATE.activeRoom || STATE.activeRoom.id !== event.room_id) openRoom(event.room_id); else restoreRoom(); });
   } else if(event.event === 'notification_new'){
     refreshNotifBadge();
+  } else if(event.event === 'family_message'){
+    if(typeof onFamilyMessage === 'function') onFamilyMessage(event);
+  } else if(event.event === 'scheduled_due'){
+    showToast('Your scheduled room starts soon — tap Go live on Home', 'info');
+    if(typeof renderUpcoming === 'function') renderUpcoming();
   }
 }
 
@@ -2300,6 +2327,9 @@ function apiProfileHTML(p, isSelf){
          ${menuRow('levels', 'crown', 'Levels & VIP', p.vip_tier ? `VIP${Number(p.vip_tier)}` : '', 'linear-gradient(135deg,#7b2ff7,#2fe6d8)')}
          ${menuRow('leaderboard', 'trophy', 'Rankings', '', 'linear-gradient(135deg,#f59e0b,#e11d48)')}
          ${menuRow('tasks', 'list-checks', 'Daily tasks', 'Free coins', 'linear-gradient(135deg,#0ea5e9,#10b981)')}
+         ${menuRow('family', 'users', 'Family', p.family ? escapeHTML(p.family.name) : 'Join or create', 'linear-gradient(135deg,#0ea5e9,#2fe6d8)')}
+         ${menuRow('bonds', 'heart', 'CP & best friends', p.cp ? `💞 ${escapeHTML(p.cp.username)}` : '', 'linear-gradient(135deg,#ff3ea5,#b721ff)')}
+         ${menuRow('visitors', 'eye', 'Visitors', p.new_visitors ? `<span class="count-pill">${Number(p.new_visitors)} new</span>` : '', 'linear-gradient(135deg,#a855f7,#6366f1)')}
          ${menuRow('settings', 'settings', 'Settings', '', 'linear-gradient(135deg,#64748b,#334155)')}
        </div>`
     : `<div class="profile-btn-row">
@@ -2315,7 +2345,8 @@ function apiProfileHTML(p, isSelf){
     <div class="profile-main">
       <div class="avatar-wrap lg${frameCls(p.frame)}"><img class="avatar" src="${imgSrc(p.avatar_url)}"></div>
       <div class="profile-name-row"><h2 class="${vipCls(statusOf(p).vip).trim()}">${escapeHTML(p.username)}</h2><span class="level-badge">Lv ${Number(p.level || 1)}</span></div>
-      <div class="profile-badges-row">${userBadges(statusOf(p))}</div>
+      <div class="profile-badges-row">${userBadges(Object.assign(statusOf(p), { family_tag: p.family ? p.family.tag : '' }))}</div>
+      ${p.family ? `<button type="button" class="profile-family" data-open-family-chip="${Number(p.family.id)}">${typeof emblemHTML === 'function' ? emblemHTML(p.family.emblem) : ''}${escapeHTML(p.family.name)}</button>` : ''}
       <div class="profile-username">@${escapeHTML(p.username)}</div>
       ${p.bio ? `<div class="profile-bio">${escapeHTML(p.bio)}</div>` : '<div style="height:12px"></div>'}
       ${p.country ? `<div class="profile-country">${ic('map-pin')} ${escapeHTML(p.country)}</div>` : ''}
@@ -2326,6 +2357,7 @@ function apiProfileHTML(p, isSelf){
         <div class="stat"><b>${Number(p.level || 1)}</b><span>Level</span></div>
       </div>
       ${actions}
+      <div class="bond-zone" data-bond-zone="${Number(p.id)}" data-name="${escapeAttr(p.username)}" data-avatar="${escapeAttr(safeImgUrl(p.avatar_url))}"></div>
     </div>`;
 }
 function openApiProfile(username){
@@ -2335,6 +2367,7 @@ function openApiProfile(username){
   Api.getProfile(username).then(p => {
     const isSelf = STATE.currentUser && p.id === STATE.currentUser.id;
     target.innerHTML = apiProfileHTML(p, isSelf);
+    if(typeof loadBondZone === 'function') loadBondZone(p.id, p.username, p.avatar_url);
   }).catch(e => {
     target.innerHTML = emptyStateHTML('⚠️','Could not load profile', escapeHTML(e.message || ''));
   });
@@ -2413,6 +2446,9 @@ function notifIconMeta(type){
     case 'invite': return {ic:ic('megaphone'), bg:'rgba(47,230,216,0.15)'};
     case 'message': return {ic:ic('message-circle'), bg:'rgba(255,62,165,0.15)'};
     case 'live': return {ic:ic('radio'), bg:'rgba(255,77,109,0.15)'};
+    case 'bond': return {ic:ic('heart'), bg:'rgba(255,62,165,0.15)'};
+    case 'family': return {ic:ic('users'), bg:'rgba(47,230,216,0.15)'};
+    case 'scheduled': return {ic:ic('calendar-clock'), bg:'rgba(47,230,216,0.15)'};
     default: return {ic:ic('bell'), bg:'rgba(255,255,255,0.08)'};
   }
 }
@@ -2972,6 +3008,7 @@ function bindRoomPartyUI(){
     else if(tool === 'clean'){ document.getElementById('chat-messages').innerHTML = ''; showToast('Chat cleared on your screen', 'info'); }
     else if(tool === 'options'){ renderRoomMoreSheet(); openModal('room-more-modal'); }
     else if(tool === 'settings'){ openRoomSettings(); }
+    else if(tool === 'games'){ if(isApiActiveRoom()) openGamesSheet(); else showToast('Games work in live rooms', 'info'); }
     else if(tool === 'music'){
       if(Music.el){ showToast('Music is already playing — use the bar to pause or stop', 'info'); return; }
       if(!Music.canPlay()){ showToast('Take a seat on the mic to play music', 'info'); return; }
@@ -3103,11 +3140,34 @@ function bindCreateRoom(){
     });
   });
   document.getElementById('cr-image-picker').addEventListener('click', ()=> showToast('Image upload (demo)', 'info'));
+  document.getElementById('cr-when').addEventListener('click', e => {
+    const b = e.target.closest('[data-when]'); if(b) setCreateWhen(b.dataset.when);
+  });
   document.getElementById('create-room-form').addEventListener('submit', async e=>{
     e.preventDefault();
     const form = e.target;
     const name = document.getElementById('cr-name').value.trim();
     if(!name){ showToast('Room name is required', 'error'); return; }
+    const desc0 = document.getElementById('cr-desc').value.trim();
+    const catChip = document.querySelector('#cr-category .chip.active');
+    if(STATE.crWhen === 'later'){
+      const raw = document.getElementById('cr-start-at').value;
+      const when = raw ? new Date(raw) : null;
+      if(!when || isNaN(when.getTime())){ showToast('Pick a date and time', 'error'); return; }
+      if(selectedPrivacy === 'private'){ showToast('Scheduled rooms are public — choose Public', 'info'); return; }
+      const submit = form.querySelector('button[type="submit"]');
+      if(submit) submit.disabled = true;
+      try{
+        await Api.scheduleRoom({ title: name, description: desc0, category: (catChip ? catChip.dataset.crCat : 'Talk').toLowerCase(), starts_at: when.toISOString() });
+        showToast(`Scheduled for ${when.toLocaleString([], { weekday:'short', hour:'numeric', minute:'2-digit' })} — followers can set a reminder`, 'success');
+        closeOverlay('screen-create-room');
+        form.reset();
+        setCreateWhen('now');
+        if(typeof renderUpcoming === 'function') renderUpcoming();
+      }catch(err){ showToast(err.message || 'Could not schedule', 'error'); }
+      finally{ if(submit) submit.disabled = false; }
+      return;
+    }
     const password = selectedPrivacy === 'private' ? document.getElementById('cr-password').value.trim() : '';
     if(selectedPrivacy === 'private' && (password.length < 4 || password.length > 32)){
       showToast('Private rooms need a password of 4-32 characters', 'error');
@@ -3129,6 +3189,22 @@ function bindCreateRoom(){
     document.querySelectorAll('.privacy-opt').forEach(o => o.classList.toggle('active', o.dataset.privacy === 'public'));
     document.querySelectorAll('#cr-category .chip').forEach((c,i)=>c.classList.toggle('active', i===0));
   });
+}
+
+// Create room: start now, or schedule for later (5 min - 30 days ahead).
+function setCreateWhen(when){
+  STATE.crWhen = when;
+  document.querySelectorAll('#cr-when [data-when]').forEach(b => b.classList.toggle('active', b.dataset.when === when));
+  const wrap = document.getElementById('cr-when-wrap');
+  wrap.hidden = when !== 'later';
+  const input = document.getElementById('cr-start-at');
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  input.min = fmt(new Date(Date.now() + 5 * 60000));
+  input.max = fmt(new Date(Date.now() + 30 * 86400000));
+  if(when === 'later' && !input.value){ const d = new Date(Date.now() + 60 * 60000); d.setMinutes(0); input.value = fmt(d); }
+  const submit = document.querySelector('#create-room-form button[type="submit"]');
+  if(submit) submit.textContent = when === 'later' ? 'Schedule room' : 'Create Room';
 }
 
 function bindSettings(){
@@ -3224,6 +3300,8 @@ function init(){
   bindSettings();
   if(typeof bindPerks === 'function') bindPerks();
   if(typeof bindRoomPlus === 'function') bindRoomPlus();
+  if(typeof bindSocial === 'function') bindSocial();
+  if(typeof bindGames === 'function') bindGames();
   bindOverlaysAndModals();
   bindGlobalKeyboard();
   renderDiscoverTab();

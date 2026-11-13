@@ -8,6 +8,40 @@ from .models import HandRaise, RoomBan, RoomModerator, RoomMute, RoomParticipant
 VACANT_SEAT = {"user": None, "is_muted": True, "muted_by_host": False}
 
 
+def setup_new_room(room, host):
+    """Seats + host on seat 0 + host as first participant + tell followers."""
+    from apps.notifications.services import notify_followers_live
+    Seat.objects.bulk_create([Seat(room=room, position=i) for i in range(room.seat_count)])
+    Seat.objects.filter(room=room, position=0).update(user=host, is_muted=False)
+    RoomParticipant.objects.create(room=room, user=host)
+    notify_followers_live(host, room)
+
+
+@transaction.atomic
+def create_live_room(host, *, name, category, description="", password=""):
+    """Used by scheduled rooms ("Go live"); the REST create view shares setup_new_room()."""
+    import uuid
+
+    from django.contrib.auth.hashers import make_password
+    from rest_framework.exceptions import PermissionDenied
+
+    from apps.accounts.levels import is_admin
+    from apps.accounts.profiles import ensure_profile
+
+    from .models import Room
+    ensure_profile(host)
+    if Room.objects.filter(host=host, is_live=True).count() >= 3 and not is_admin(host):
+        raise PermissionDenied("You can host at most 3 live rooms at a time.")
+    room = Room.objects.create(
+        name=name[:80], category=category, description=description[:200], host=host,
+        voice_room_name=f"vibra-{uuid.uuid4().hex[:12]}",
+        password=make_password(password) if password else "",
+        seat_count=20 if is_admin(host) else 10,
+    )
+    setup_new_room(room, host)
+    return room
+
+
 def vacate(seat):
     """Free one (already locked) seat."""
     for field, value in VACANT_SEAT.items():

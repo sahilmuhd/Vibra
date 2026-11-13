@@ -22,7 +22,8 @@ class Conversation(models.Model):
 class DirectMessage(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="messages")
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name="+")
-    text = models.CharField(max_length=1000)
+    text = models.CharField(max_length=1000, blank=True)
+    voice = models.ForeignKey("social.VoiceClip", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
 

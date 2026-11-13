@@ -314,8 +314,8 @@ const Api = {
     return this.request(`/dms/${userId}/`);
   },
 
-  async sendDirectMessage(userId, text) {
-    return this.request(`/dms/${userId}/`, { method: "POST", body: { text } });
+  async sendDirectMessage(userId, text, voiceId) {
+    return this.request(`/dms/${userId}/`, { method: "POST", body: voiceId ? { text: text || "", voice_id: voiceId } : { text } });
   },
 
   async unreadDMCount() {
@@ -357,6 +357,58 @@ const Api = {
   async getLeaderboard(board, period) {
     return this.request(`/perks/leaderboard/?board=${encodeURIComponent(board)}&period=${encodeURIComponent(period)}`);
   },
+  async getEvents() { return this.request("/perks/events/"); },
+
+  // ---- phase 5: families, bonds, visitors, friends live, scheduled rooms ----
+  async listFamilies(q) { return this.request(`/social/families/${q ? "?q=" + encodeURIComponent(q) : ""}`); },
+  async createFamily(fields) { return this.request("/social/families/", { method: "POST", body: fields }); },
+  async getFamily(id) { return this.request(`/social/families/${id}/`); },
+  async updateFamily(id, fields) { return this.request(`/social/families/${id}/`, { method: "PATCH", body: fields }); },
+  async familyAction(id, action, body) { return this.request(`/social/families/${id}/${action}/`, { method: "POST", body: body || {} }); },
+  async familyChat(id) { return this.request(`/social/families/${id}/chat/`); },
+  async sendFamilyChat(id, text) { return this.request(`/social/families/${id}/chat/`, { method: "POST", body: { text } }); },
+  async getBonds() { return this.request("/social/bonds/"); },
+  async requestBond(userId, kind) { return this.request("/social/bonds/", { method: "POST", body: { user_id: userId, kind } }); },
+  async answerBond(reqId, action) { return this.request(`/social/bonds/requests/${reqId}/${action}/`, { method: "POST" }); },
+  async breakBond(userId) { return this.request(`/social/bonds/with/${userId}/break/`, { method: "POST" }); },
+  async bondsOf(userId) { return this.request(`/social/bonds/of/${userId}/`); },
+  async getVisitors() { return this.request("/social/visitors/"); },
+  async markVisitorsSeen() { return this.request("/social/visitors/", { method: "POST" }); },
+  async friendsLive() { return this.request("/social/friends-live/"); },
+  async listScheduled(scope) { return this.request(`/social/scheduled/?scope=${encodeURIComponent(scope || "all")}`); },
+  async scheduleRoom(fields) { return this.request("/social/scheduled/", { method: "POST", body: fields }); },
+  async scheduledAction(id, action) { return this.request(`/social/scheduled/${id}/${action}/`, { method: "POST" }); },
+
+  // Voice clip upload (multipart). Retries once after a token refresh.
+  async uploadVoice(blob, seconds) {
+    const ext = /mp4|m4a|aac/.test(blob.type) ? "m4a" : /ogg/.test(blob.type) ? "ogg" : "webm";
+    const send = () => {
+      const form = new FormData();
+      form.append("audio", blob, `voice.${ext}`);
+      form.append("seconds", String(seconds));
+      const token = this.getAccessToken();
+      return fetch(`${API_BASE}/social/voice/`, {
+        method: "POST", body: form, headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    };
+    let res;
+    try { res = await send(); }
+    catch (e) { const err = new Error("Can't reach the Vibra server. Check your connection."); err.status = 0; throw err; }
+    if (res.status === 401 && await this.refreshAccessToken()) res = await send();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const first = data && typeof data === "object" ? Object.values(data)[0] : null;
+      const err = new Error(data.detail || (Array.isArray(first) ? first[0] : first) || "Upload failed");
+      err.status = res.status; throw err;
+    }
+    return data;
+  },
+
+  // ---- phase 6: room games ----
+  async gameAction(roomId, action, body) {
+    return this.request(`/games/rooms/${roomId}/${action}/`, { method: "POST", body: body || {} });
+  },
+  async currentGame(roomId) { return this.request(`/games/rooms/${roomId}/current/`); },
 
   // ---- voice (LiveKit) ----
   // Call right after taking a seat (or on entering a room to listen).
@@ -371,10 +423,10 @@ const Api = {
     return this.request(`/rooms/${roomId}/messages/`);
   },
 
-  async sendMessage(roomId, text, replyTo = null) {
+  async sendMessage(roomId, text, replyTo = null, voiceId = null) {
     return this.request(`/rooms/${roomId}/messages/`, {
       method: "POST",
-      body: { text, reply_to: replyTo },
+      body: voiceId ? { text: text || "", reply_to: replyTo, voice_id: voiceId } : { text, reply_to: replyTo },
     });
   },
 

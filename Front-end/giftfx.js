@@ -131,7 +131,7 @@ const FX = (() => {
       const b = el('div', 'fx-entry' + (u.admin ? ' admin' : vip ? ' vip' : ''), `
         <img class="avatar" src="${imgSrc(u.avatar)}" alt="">
         <span class="lv">${u.admin ? 'ADMIN' : vip ? 'VIP' + vip : 'Lv ' + (Number(u.level) || 1)}</span>
-        <span class="t"><b>${escapeHTML(u.name)}</b> joined the room</span>
+        <span class="t"><b>${escapeHTML(u.name)}</b> joined the room${u.cp ? ` <span class="cp-tag">💞 ${escapeHTML(u.cp)}</span>` : ''}</span>
         <span class="spark"></span>`);
       layer.appendChild(b);
       await wait(reduced() ? 1800 : 2700);
@@ -140,8 +140,8 @@ const FX = (() => {
   }
 
   /* ---------- mount entrance (store item): vehicle crosses the room ---------- */
-  const MOUNT_EMOJI = { bike: '🏍️', car: '🏎️', rocket: '🚀', unicorn: '🦄', ufo: '🛸', dragon: '🐉' };
-  const MOUNT_NAME = { bike: 'Street Bike', car: 'Supercar', rocket: 'Rocket', unicorn: 'Unicorn', ufo: 'UFO', dragon: 'Dragon' };
+  const MOUNT_EMOJI = { bike: '🏍️', car: '🏎️', rocket: '🚀', unicorn: '🦄', ufo: '🛸', dragon: '🐉', lantern: '🏮', reindeer: '🦌' };
+  const MOUNT_NAME = { bike: 'Street Bike', car: 'Supercar', rocket: 'Rocket', unicorn: 'Unicorn', ufo: 'UFO', dragon: 'Dragon', lantern: 'Sky Lantern', reindeer: 'Reindeer Sleigh' };
   const mountQ = queue(4);
   function mountEntry(u) {
     if (!MOUNT_EMOJI[u.mount] || (!enabled() && !u.preview)) return;

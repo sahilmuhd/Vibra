@@ -19,19 +19,47 @@ class StoreView(APIView):
 
     def get(self, request):
         now = timezone.now()
-        items = list(StoreItem.objects.filter(is_active=True))
         admin = is_admin(request.user)
+        items = list(StoreItem.objects.filter(is_active=True).select_related("event"))
         if admin:
             owned = {i.id: services.FOREVER for i in items}
         else:
             owned = {u.item_id: u.expires_at for u in UserItem.objects.filter(user=request.user, expires_at__gt=now)}
+        # Event items show while their event runs (or if already owned).
+        items = [i for i in items if not i.event_id or i.event.is_live(now) or i.id in owned]
         profile = request.user.profile
         worn = {StoreItem.KIND_FRAME: profile.active_frame(now), StoreItem.KIND_MOUNT: profile.active_mount(now)}
         return Response([{
             "id": i.id, "kind": i.kind, "key": i.key, "name": i.name, "price": i.price, "days": i.days,
             "owned_until": owned.get(i.id), "equipped": worn.get(i.kind) == i.key and i.id in owned,
             "free_for_admin": admin,
+            "event": ({"key": i.event.key, "name": i.event.name, "ends_at": i.event.ends_at} if i.event_id else None),
         } for i in items])
+
+
+class EventsView(APIView):
+    """Live + upcoming seasonal events, each with its limited items and ranking."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import SeasonEvent
+        now = timezone.now()
+        out = []
+        for ev in SeasonEvent.objects.filter(is_active=True, ends_at__gt=now).order_by("starts_at")[:3]:
+            live = ev.is_live(now)
+            ranking = []
+            if live:
+                rows = services.event_ranking(ev)
+                users = {u.id: u for u in get_user_model().objects.filter(id__in=[r["sender"] for r in rows]).select_related("profile")}
+                ranking = [{"rank": n, "score": r["score"], "user": PublicUserSerializer(users[r["sender"]]).data}
+                           for n, r in enumerate(rows, 1) if r["sender"] in users and hasattr(users[r["sender"]], "profile")]
+            out.append({
+                "key": ev.key, "name": ev.name, "tagline": ev.tagline, "style": ev.style,
+                "starts_at": ev.starts_at, "ends_at": ev.ends_at, "live": live,
+                "item_ids": list(ev.items.filter(is_active=True).values_list("id", flat=True)),
+                "ranking": ranking,
+            })
+        return Response(out)
 
 
 class BuyView(APIView):
@@ -91,6 +119,16 @@ class LeaderboardView(APIView):
     def get(self, request):
         board = request.query_params.get("board", "rich")
         period = request.query_params.get("period", "week")
+        if board == "families" and period in services.PERIODS:
+            from datetime import timedelta
+
+            from apps.social.models import Family
+            from apps.social.services import family_scores
+            since = timezone.now() - timedelta(days=services.PERIODS[period])
+            fams = family_scores(Family.objects.all(), since).filter(score__gt=0).order_by("-score")[:20]
+            return Response([{"rank": n, "score": f.score, "family": {
+                "id": f.id, "name": f.name, "tag": f.tag, "emblem": f.emblem, "members": f.member_count}}
+                for n, f in enumerate(fams, 1)])
         if board not in ("rich", "charm", "rooms") or period not in services.PERIODS:
             return Response({"detail": "Unknown board or period."}, status=status.HTTP_400_BAD_REQUEST)
         rows, group = services.leaderboard(board, period)

@@ -23,5 +23,5 @@ install -m 644 "$APP_DIR"/deploy/systemd/vibra-*.service "$APP_DIR"/deploy/syste
 systemctl daemon-reload
 systemctl restart vibra-api
 sleep 2
-systemctl is-active --quiet vibra-api && echo "vibra-api is running ($(git -C "$APP_DIR" log -1 --format='%h %s'))" \
+systemctl is-active --quiet vibra-api && echo "vibra-api is running ($(sudo -u vibra git -C "$APP_DIR" log -1 --format='%h %s'))" \
   || { echo "vibra-api failed to start:"; journalctl -u vibra-api -n 30 --no-pager; exit 1; }

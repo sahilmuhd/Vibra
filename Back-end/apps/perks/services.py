@@ -34,6 +34,8 @@ def day_start(d):
 def buy_item(user, item):
     if not item.is_active:
         raise ValidationError("This item is no longer sold.")
+    if item.event_id and not item.event.is_live() and not is_admin(user):
+        raise ValidationError(f"{item.name} is only available during {item.event.name}.")
     if is_admin(user):
         # The main admin owns everything already: "buying" just puts it on.
         owned, _ = UserItem.objects.update_or_create(user=user, item=item, defaults={"expires_at": FOREVER})
@@ -192,6 +194,14 @@ def claim_task(user, key):
 
 # ------------------------------------------------------------------ leaderboards
 PERIODS = {"day": 1, "week": 7, "month": 30}
+
+
+def event_ranking(event, limit=20):
+    from apps.rooms.models import GiftEvent
+    end = min(event.ends_at, timezone.now())
+    rows = (GiftEvent.objects.filter(created_at__gte=event.starts_at, created_at__lt=end)
+            .values("sender").annotate(score=Sum(F("gift__cost") * F("combo"))).order_by("-score")[:limit])
+    return list(rows)
 
 
 def leaderboard(board, period, limit=20):

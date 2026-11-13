@@ -33,7 +33,11 @@ class PublicUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "avatar_url", "level", "wealth_level", "charm_level", "vip", "frame", "mount",
-                  "is_admin"]
+                  "is_admin", "family_tag", "family_id", "cp_name"]
+
+    family_tag = serializers.CharField(source="profile.family_tag", read_only=True)
+    family_id = serializers.IntegerField(source="profile.family_id", read_only=True)
+    cp_name = serializers.CharField(source="profile.cp_name", read_only=True)
 
     def get_is_admin(self, user):
         return is_admin(user)
@@ -70,6 +74,9 @@ class ProfileSerializer(serializers.ModelSerializer):
     frame = serializers.SerializerMethodField()
     mount = serializers.SerializerMethodField()
     is_admin = serializers.SerializerMethodField()
+    family = serializers.SerializerMethodField()
+    cp = serializers.SerializerMethodField()
+    new_visitors = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -77,6 +84,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "id", "username", "avatar_url", "bio", "country", "level",
             "followers_count", "following_count", "is_following", "is_blocked",
             "live_room", "created_at", "wealth", "charm", "vip", "frame", "mount", "is_admin",
+            "family", "cp", "new_visitors",
         ]
         # `username` is read-only here: it is mirrored on auth.User (used for
         # login), and PATCHing only Profile.username silently desynced the two.
@@ -109,6 +117,27 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_is_admin(self, obj):
         return is_admin(obj.user)
+
+    def get_family(self, obj):
+        from apps.social.models import FamilyMember
+        m = FamilyMember.objects.select_related("family").filter(user_id=obj.user_id).first()
+        if m is None:
+            return None
+        f = m.family
+        return {"id": f.id, "name": f.name, "tag": f.tag, "emblem": f.emblem, "role": m.role}
+
+    def get_cp(self, obj):
+        p = obj.cp_partner
+        if p is None or not hasattr(p, "profile"):
+            return None
+        return {"id": p.id, "username": p.profile.username, "avatar_url": p.profile.avatar_url}
+
+    def get_new_visitors(self, obj):
+        viewer = self._viewer()
+        if viewer is None or viewer.id != obj.user_id:
+            return None
+        from apps.social.services import new_visitor_count
+        return new_visitor_count(obj.user)
 
     def get_frame(self, obj):
         return obj.active_frame()

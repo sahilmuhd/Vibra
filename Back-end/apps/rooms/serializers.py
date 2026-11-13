@@ -76,10 +76,21 @@ class RoomDetailSerializer(RoomListSerializer):
 
 class MessageSerializer(serializers.ModelSerializer):
     user = PublicUserSerializer(read_only=True)
+    text = serializers.CharField(max_length=500, required=False, allow_blank=True, trim_whitespace=False)
+    voice = serializers.SerializerMethodField()
+
+    def get_voice(self, obj):
+        from apps.social.services import voice_payload
+        return voice_payload(obj.voice)
+
+    def validate(self, attrs):
+        if not attrs.get("text") and not self.context.get("has_voice"):
+            raise serializers.ValidationError({"text": "Message cannot be empty."})
+        return attrs
 
     class Meta:
         model = Message
-        fields = ["id", "room", "user", "text", "reply_to", "is_system", "created_at"]
+        fields = ["id", "room", "user", "text", "reply_to", "is_system", "voice", "created_at"]
         # `room` was previously writable and *required* in the body, so the
         # frontend's {text, reply_to} payload was rejected with a 400. The room
         # always comes from the URL.
@@ -92,10 +103,7 @@ class MessageSerializer(serializers.ModelSerializer):
         return value
 
     def validate_text(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Message cannot be empty.")
-        return value
+        return value.strip()
 
 
 class GiftSerializer(serializers.ModelSerializer):

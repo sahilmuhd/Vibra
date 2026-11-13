@@ -5,11 +5,12 @@
    Relies on app.js helpers at call time (ic, escapeHTML, imgSrc, showToast,
    openOverlay/closeOverlay, openModal/closeModal, STATE, Api).
    ============================================================================ */
-const FRAME_KEYS = ['neon', 'rose', 'ice', 'gold', 'flame', 'galaxy'];
+const FRAME_KEYS = ['neon', 'rose', 'ice', 'gold', 'flame', 'galaxy', 'diya', 'rangoli', 'snowflake'];
 const MOUNTS = {
   bike: { emoji: '🏍️', name: 'Street Bike' }, car: { emoji: '🏎️', name: 'Supercar' },
   rocket: { emoji: '🚀', name: 'Rocket' }, unicorn: { emoji: '🦄', name: 'Unicorn' },
   ufo: { emoji: '🛸', name: 'UFO' }, dragon: { emoji: '🐉', name: 'Dragon' },
+  lantern: { emoji: '🏮', name: 'Sky Lantern' }, reindeer: { emoji: '🦌', name: 'Reindeer Sleigh' },
 };
 const VIP_PERKS = [
   'VIP badge next to your name',
@@ -28,6 +29,7 @@ function badgesHTML(u){
   const charm = Number(u.charm_level != null ? u.charm_level : u.charm) || 0;
   const vip = Math.min(5, Number(u.vip) || 0);
   return (u.is_admin ? `<span class="bdg admin" title="Vibra admin">ADMIN</span>` : '')
+    + (u.family_tag ? `<span class="bdg fam" title="Family">${escapeHTML(u.family_tag)}</span>` : '')
     + `<span class="bdg wealth" title="Wealth level">${ic('gem')}${wealth}</span>`
     + (charm > 1 ? `<span class="bdg charm" title="Charm level">${ic('heart')}${charm}</span>` : '')
     + (vip ? `<span class="bdg vip vip-${vip}" title="VIP ${vip}">VIP${vip}</span>` : '');
@@ -100,7 +102,7 @@ function renderStore(){
       ? `<button type="button" class="store-btn ghost" data-unequip="${escapeAttr(i.kind)}">Take off</button>`
       : owned ? `<button type="button" class="store-btn" data-equip="${Number(i.id)}">Use</button>`
               : `<button type="button" class="store-btn buy" data-buy="${Number(i.id)}">${ic('coins')} ${Number(i.price).toLocaleString()}</button>`;
-    return `<div class="store-card${i.equipped ? ' on' : ''}">
+    return `<div class="store-card${i.equipped ? ' on' : ''}">${i.event ? '<span class="ltd">LIMITED</span>' : ''}
       ${visual}
       <div class="nm">${escapeHTML(i.name)}</div>
       <div class="meta">${owned ? escapeHTML(daysLeft(i.owned_until)) + (i.equipped ? ' · in use' : '') : `${Number(i.days)} days`}</div>
@@ -171,23 +173,30 @@ async function openLeaderboard(board, period){
   let rows;
   try{ rows = await Api.getLeaderboard(STATE.lbBoard, STATE.lbPeriod); }
   catch(e){ body.innerHTML = emptyStateHTML('⚠️', 'Could not load rankings', escapeHTML(e.message || '')); return; }
-  if(!rows.length){ body.innerHTML = emptyStateHTML('🏆', 'No gifts yet in this period', 'Send a gift in any room to get on the board.'); return; }
-  const who = (r) => r.room
+  if(!rows.length){ body.innerHTML = STATE.lbBoard === 'families'
+    ? emptyStateHTML('👥', 'No family gifts yet', 'Families climb this board when their members send gifts.')
+    : emptyStateHTML('🏆', 'No gifts yet in this period', 'Send a gift in any room to get on the board.'); return; }
+  const who = (r) => r.family
+    ? { name: r.family.name, emblem: r.family.emblem, sub: `${r.family.tag} · ${Number(r.family.members)} members`, familyId: r.family.id }
+    : r.room
     ? { name: r.room.name, avatar: r.room.host.avatar_url, frame: r.room.host.frame, sub: `by ${r.room.host.username}`, roomId: r.room.id }
     : { name: r.user.username, avatar: r.user.avatar_url, frame: r.user.frame, user: r.user };
+  const link = (w) => w.roomId ? ` data-lb-room="${Number(w.roomId)}"` : w.familyId ? ` data-lb-family="${Number(w.familyId)}"` : '';
+  const pic = (w, small) => w.familyId ? emblemHTML(w.emblem, small ? '' : 'lg')
+    : small ? `<img class="avatar" src="${imgSrc(w.avatar)}" alt="">` : `<div class="avatar-wrap${frameClass(w.frame)}"><img class="avatar" src="${imgSrc(w.avatar)}" alt=""></div>`;
   const podium = rows.slice(0, 3);
   const order = [podium[1], podium[0], podium[2]].filter(Boolean);
   body.innerHTML = `<div class="lb-podium">${order.map(r => { const w = who(r); return `
-      <div class="lb-pod p${r.rank}"${w.roomId ? ` data-lb-room="${Number(w.roomId)}"` : ''}>
+      <div class="lb-pod p${r.rank}"${link(w)}>
         <div class="lb-crown">${r.rank === 1 ? ic('crown') : r.rank}</div>
-        <div class="avatar-wrap${frameClass(w.frame)}"><img class="avatar" src="${imgSrc(w.avatar)}" alt=""></div>
+        ${pic(w, false)}
         <div class="lb-name">${escapeHTML(w.name)}</div>
         <div class="lb-score">${ic('coins')}${escapeHTML(formatScore(r.score))}</div>
       </div>`; }).join('')}</div>
     <div class="lb-list">${rows.slice(3).map(r => { const w = who(r); return `
-      <div class="lb-row"${w.roomId ? ` data-lb-room="${Number(w.roomId)}"` : ''}>
+      <div class="lb-row"${link(w)}>
         <span class="lb-rank">${r.rank}</span>
-        <img class="avatar" src="${imgSrc(w.avatar)}" alt="">
+        ${pic(w, true)}
         <div class="lb-meta"><div class="lb-name">${escapeHTML(w.name)}</div>${w.user ? `<div class="lb-bdg">${badgesHTML(w.user)}</div>` : `<div class="lb-sub">${escapeHTML(w.sub)}</div>`}</div>
         <span class="lb-score">${ic('coins')}${escapeHTML(formatScore(r.score))}</span>
       </div>`; }).join('')}</div>`;
@@ -319,18 +328,21 @@ let bannerTimer = null;
 function renderHomeBanners(){
   const track = document.getElementById('home-banners');
   if(!track || VIBRA_CONFIG.DEMO_DATA){ if(track) track.parentElement.hidden = true; return; }
-  track.innerHTML = HOME_BANNERS.map(b => `
+  const ev = STATE.liveEvent;
+  const banners = ev ? [{ t: ev.name, s: `Limited items & event ranking · ends in ${typeof endsIn === 'function' ? endsIn(ev.ends_at) : 'soon'}`, a: 'event',
+    icon: 'sparkles', g: ev.style === 'winter' ? 'linear-gradient(120deg,#1e3a8a,#38bdf8)' : 'linear-gradient(120deg,#e8590c,#ffb347)' }, ...HOME_BANNERS] : HOME_BANNERS;
+  track.innerHTML = banners.map(b => `
     <button type="button" class="hb" data-banner="${b.a}" style="background:${b.g}">
       <div class="hb-t">${escapeHTML(b.t)}</div><div class="hb-s">${escapeHTML(b.s)}</div>
       <span class="hb-ic">${ic(b.icon)}</span><span class="hb-go">Open ${ic('chevron-right')}</span>
     </button>`).join('');
-  document.getElementById('home-banner-dots').innerHTML = HOME_BANNERS.map((_, i) => `<span class="${i ? '' : 'on'}"></span>`).join('');
+  document.getElementById('home-banner-dots').innerHTML = banners.map((_, i) => `<span class="${i ? '' : 'on'}"></span>`).join('');
   clearInterval(bannerTimer);
   bannerTimer = setInterval(() => {
     if(document.hidden) return;
     const w = track.clientWidth;
     if(!w) return;
-    const next = (Math.round(track.scrollLeft / w) + 1) % HOME_BANNERS.length;
+    const next = (Math.round(track.scrollLeft / w) + 1) % banners.length;
     track.scrollTo({ left: next * w, behavior: 'smooth' });
   }, 4500);
 }
@@ -339,6 +351,7 @@ function bannerAction(a){
   else if(a === 'leaderboard') openLeaderboard('rich', 'week');
   else if(a === 'store') openStore('frame');
   else if(a === 'tasks') openTasks();
+  else if(a === 'event') openEvent();
 }
 
 /* ---------------------------------------------------------------- bindings */
@@ -367,6 +380,8 @@ function bindPerks(){
   document.getElementById('lb-boards').addEventListener('click', e => { const b = e.target.closest('[data-lb-board]'); if(b) openLeaderboard(b.dataset.lbBoard); });
   document.getElementById('lb-periods').addEventListener('click', e => { const b = e.target.closest('[data-lb-period]'); if(b) openLeaderboard(null, b.dataset.lbPeriod); });
   document.getElementById('lb-body').addEventListener('click', e => {
+    const fam = e.target.closest('[data-lb-family]');
+    if(fam){ closeOverlay('screen-leaderboard'); openFamily(Number(fam.dataset.lbFamily)); return; }
     const r = e.target.closest('[data-lb-room]'); if(!r) return;
     closeOverlay('screen-leaderboard'); openRoom(Number(r.dataset.lbRoom));
   });
@@ -405,5 +420,8 @@ function bindPerks(){
     else if(a === 'tasks') openTasks();
     else if(a === 'edit') openEditProfile();
     else if(a === 'settings') openOverlay('screen-settings');
+    else if(a === 'family') openFamilies();
+    else if(a === 'bonds') openBonds();
+    else if(a === 'visitors') openVisitors();
   });
 }

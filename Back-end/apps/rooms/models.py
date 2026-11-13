@@ -97,6 +97,7 @@ class Message(models.Model):
     text = models.CharField(max_length=500)
     reply_to = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     is_system = models.BooleanField(default=False)
+    voice = models.ForeignKey("social.VoiceClip", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -62,8 +62,8 @@ class StoreTests(TestCase):
         self.mount = StoreItem.objects.get(kind="mount", key="car")
 
     def test_catalog_seeded(self):
-        self.assertEqual(StoreItem.objects.filter(kind="frame").count(), 6)
-        self.assertEqual(StoreItem.objects.filter(kind="mount").count(), 6)
+        self.assertEqual(StoreItem.objects.filter(kind="frame", event__isnull=True).count(), 6)
+        self.assertEqual(StoreItem.objects.filter(kind="mount", event__isnull=True).count(), 6)
 
     def test_buy_needs_coins_then_auto_equips_and_extends(self):
         self.assertEqual(self.c.post("/api/perks/store/buy/", {"item_id": self.frame.id}).status_code, 400)

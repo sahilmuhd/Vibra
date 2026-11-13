@@ -15,7 +15,6 @@ from rest_framework.views import APIView
 
 from apps.accounts.profiles import ensure_profile
 from apps.accounts.serializers import PublicUserSerializer
-from apps.notifications.services import notify_followers_live
 
 from apps.accounts.levels import is_admin
 from apps.perks.services import owns_theme
@@ -34,7 +33,7 @@ from .serializers import (
 )
 from .services import (
     can_act_on, can_moderate, is_banned, is_host, is_host_muted, parse_bool, remove_user_from_room,
-    seat_user, shut_out, user_in_room, vacate, vacate_all,
+    seat_user, setup_new_room, shut_out, user_in_room, vacate, vacate_all,
 )
 from .services import VACANT_SEAT as VACANT_FIELDS
 
@@ -95,13 +94,8 @@ class RoomListCreateView(generics.ListCreateAPIView):
             password=make_password(password) if password else "",
             seat_count=20 if is_admin(self.request.user) else 10,
         )
-        Seat.objects.bulk_create(
-            [Seat(room=room, position=i) for i in range(room.seat_count)]
-        )
-        # Host auto-takes seat 0 (unmuted) and is the first participant.
-        Seat.objects.filter(room=room, position=0).update(user=self.request.user, is_muted=False)
-        RoomParticipant.objects.create(room=room, user=self.request.user)
-        notify_followers_live(self.request.user, room)
+        # Seats, host on seat 0, host as first participant, followers notified.
+        setup_new_room(room, self.request.user)
 
 
 class RoomDetailView(generics.RetrieveAPIView):
@@ -412,6 +406,7 @@ class MessageListCreateView(generics.ListCreateAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context["room"] = self.get_room()
+        context["has_voice"] = self.request.method == "POST" and self.request.data.get("voice_id") not in (None, "")
         return context
 
     def get_queryset(self):
@@ -422,7 +417,7 @@ class MessageListCreateView(generics.ListCreateAPIView):
         return (
             Message.objects.filter(room=self.get_room())
             .exclude(user_id__in=blocked)
-            .select_related("user__profile")
+            .select_related("user__profile", "voice")
             .order_by("-created_at", "-id")[:50]
         )
 
@@ -440,7 +435,9 @@ class MessageListCreateView(generics.ListCreateAPIView):
                 wait = room.slow_mode - (timezone.now() - last.created_at).total_seconds()
                 if wait > 0:
                     raise Throttled(wait=int(wait) + 1, detail=f"Slow mode is on — wait {int(wait) + 1}s.")
-        message = serializer.save(room=room, user=self.request.user)
+        from apps.social.services import claim_voice
+        voice = claim_voice(self.request.user, self.request.data.get("voice_id"))
+        message = serializer.save(room=room, user=self.request.user, voice=voice, text=serializer.validated_data.get("text", ""))
         broadcast_to_room(
             message.room_id, "message.new", MessageSerializer(message).data
         )

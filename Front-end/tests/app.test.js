@@ -70,7 +70,8 @@ test('profileToAccount maps /me payload incl. id and counts', () => {
   const { profileToAccount } = loadApp();
   const a = profileToAccount({ id: 9, username: 'sahil', avatar_url: 'https://x/y.svg', level: 2, bio: 'hi', country: 'IN', followers_count: 3, following_count: 4 });
   assert.deepEqual(a, { id: 9, name: 'sahil', username: 'sahil', avatar: 'https://x/y.svg', level: 2, bio: 'hi', country: 'IN', followers: 3, following: 4,
-    wealth_level: 2, charm_level: 1, vip: 0, frame: '', mount: '', is_admin: false });
+    wealth_level: 2, charm_level: 1, vip: 0, frame: '', mount: '', is_admin: false,
+    family: null, family_tag: '', cp: null, new_visitors: 0 });
 });
 
 test('status fields map from /me and render on seats without perks.js', () => {
@@ -90,6 +91,14 @@ test('room list row escapes and shows lock/level from the API', () => {
   assert.ok(html.includes('rr-lock'));
   assert.ok(html.includes('Lv 6'));
   assert.ok(!/<script>/.test(html));
+});
+
+test('chat messages: unknown sticker keys and voice without social.js stay plain, escaped text', () => {
+  const app = loadApp();
+  app.STATE.activeRoom = { id: 5 };
+  const html = app.chatMessageHTML({ who: 'x', displayName: 'x', avatarUrl: 'https://x.com/a.png', text: '[sticker:<img src=x>]', time: '1:00', voice: { url: 'javascript:alert(1)', seconds: 3 } });
+  assert.ok(!/<img src=x/.test(html));
+  assert.ok(!/javascript:/.test(html));
 });
 
 test('parseRoomId: digits become numbers (API rooms), others stay strings (demo rooms)', () => {

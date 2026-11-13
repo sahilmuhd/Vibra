@@ -56,4 +56,9 @@ class Command(BaseCommand):
             voice_admin.close_room(room)
             ended += 1
 
-        self.stdout.write(f"dropped {dropped} stale participants, ended {ended} empty rooms")
+        from apps.games.services import settle_expired
+        from apps.social.services import send_due_reminders
+        reminders = send_due_reminders(now)
+        games = settle_expired()
+        self.stdout.write(f"dropped {dropped} stale participants, ended {ended} empty rooms, "
+                          f"sent {reminders} reminders, settled {games} games")

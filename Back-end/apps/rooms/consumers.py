@@ -171,6 +171,19 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def music_event(self, event):
         await self.send_json({"event": "music", **event["payload"]})
 
+    # Phase 6 room games (fan-out only; the REST endpoints decide everything).
+    async def game_dice(self, event):
+        await self.send_json({"event": "game_dice", **event["payload"]})
+
+    async def game_wheel(self, event):
+        await self.send_json({"event": "game_wheel", **event["payload"]})
+
+    async def game_start(self, event):
+        await self.send_json({"event": "game_start", **event["payload"]})
+
+    async def game_result(self, event):
+        await self.send_json({"event": "game_result", **event["payload"]})
+
     async def room_settings(self, event):
         await self.send_json({"event": "room_settings", **event["payload"]})
 
@@ -234,3 +247,9 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
 
     async def notification_new(self, event):
         await self.send_json({"event": "notification_new", **event["payload"]})
+
+    async def family_message(self, event):
+        await self.send_json({"event": "family_message", **event["payload"]})
+
+    async def scheduled_due(self, event):
+        await self.send_json({"event": "scheduled_due", **event["payload"]})

@@ -29,6 +29,14 @@ class Profile(models.Model):
     mount_key = models.CharField(max_length=32, blank=True)
     mount_until = models.DateTimeField(null=True, blank=True)
 
+    # Phase 5 (apps/social): copies of family + CP so badges cost no extra queries.
+    family_id = models.PositiveIntegerField(null=True, blank=True)
+    family_tag = models.CharField(max_length=6, blank=True)
+    cp_partner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="+")
+    cp_name = models.CharField(max_length=30, blank=True)
+    visitors_seen_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return self.username
 

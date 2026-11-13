@@ -12,6 +12,8 @@ urlpatterns = [
     path("api/dms/", include("apps.dms.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/perks/", include("apps.perks.urls")),
+    path("api/social/", include("apps.social.urls")),
+    path("api/games/", include("apps.games.urls")),
     path("api/reports/", ReportView.as_view(), name="report"),
     path("api/wallet/", include("apps.wallet.urls")),
 ]
@@ -23,6 +25,11 @@ def serve_avatar(request, name):
     return serve(request, name, document_root=settings.MEDIA_ROOT / "avatars")
 
 
+def serve_voice(request, name):
+    return serve(request, name, document_root=settings.MEDIA_ROOT / "voice")
+
+
 urlpatterns += [
     re_path(r"^media/avatars/(?P<name>[A-Za-z0-9_\-]+\.jpg)$", serve_avatar),
+    re_path(r"^media/voice/(?P<name>[A-Za-z0-9_\-]+\.(?:webm|ogg|mp3|m4a|wav))$", serve_voice),
 ]

@@ -4,6 +4,29 @@ from django.db import models
 User = settings.AUTH_USER_MODEL
 
 
+class SeasonEvent(models.Model):
+    """A limited-time festival: its own store items (sold only while it runs)
+    and a gift ranking over its dates. Managed from the Django admin."""
+    key = models.SlugField(max_length=32, unique=True)
+    name = models.CharField(max_length=60)
+    tagline = models.CharField(max_length=140, blank=True)
+    style = models.CharField(max_length=20, default="lights")    # frontend look: lights | winter
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["starts_at"]
+
+    def __str__(self):
+        return self.name
+
+    def is_live(self, now=None):
+        from django.utils import timezone
+        now = now or timezone.now()
+        return self.is_active and self.starts_at <= now < self.ends_at
+
+
 class StoreItem(models.Model):
     """Something you can buy with coins for a few days: an avatar frame or a
     mount (the vehicle that plays when you enter a room). `key` is what the
@@ -21,6 +44,8 @@ class StoreItem(models.Model):
     days = models.PositiveSmallIntegerField(default=7)
     sort = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    # Limited edition: only for sale while this event runs.
+    event = models.ForeignKey(SeasonEvent, on_delete=models.SET_NULL, null=True, blank=True, related_name="items")
 
     class Meta:
         unique_together = ("kind", "key")

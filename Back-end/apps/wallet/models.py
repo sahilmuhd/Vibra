@@ -16,6 +16,7 @@ class Transaction(models.Model):
     TYPE_BONUS = "bonus"  # free coins (welcome bonus, admin grants)
     TYPE_REWARD = "reward"  # daily check-in and task rewards
     TYPE_SHOP = "shop"  # store purchases (frames, mounts)
+    TYPE_GAME = "game"  # room game prizes (paid by the host, won by players)
     TYPE_CHOICES = [
         (TYPE_PURCHASE, "Purchase"),
         (TYPE_GIFT_SENT, "Gift sent"),
@@ -23,6 +24,7 @@ class Transaction(models.Model):
         (TYPE_BONUS, "Bonus"),
         (TYPE_REWARD, "Reward"),
         (TYPE_SHOP, "Store purchase"),
+        (TYPE_GAME, "Game prize"),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transactions")

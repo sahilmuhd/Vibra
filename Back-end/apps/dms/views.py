@@ -67,7 +67,7 @@ class ThreadView(APIView):
         messages = []
         if convo:
             convo.messages.filter(sender_id=other.id, read_at__isnull=True).update(read_at=timezone.now())
-            messages = list(convo.messages.order_by("-created_at", "-id")[:100])[::-1]
+            messages = list(convo.messages.select_related("voice").order_by("-created_at", "-id")[:100])[::-1]
         return Response({
             "user": PublicUserSerializer(other).data,
             "blocked": Block.between(request.user.id, other.id),
@@ -80,11 +80,14 @@ class ThreadView(APIView):
             return Response({"detail": "You cannot message yourself."}, status=status.HTTP_400_BAD_REQUEST)
         if Block.between(request.user.id, other.id):
             raise PermissionDenied("You can't message this person.")
-        serializer = DirectMessageSerializer(data=request.data)
+        has_voice = request.data.get("voice_id") not in (None, "")
+        serializer = DirectMessageSerializer(data=request.data, context={"has_voice": has_voice})
         serializer.is_valid(raise_exception=True)
+        from apps.social.services import claim_voice
+        voice = claim_voice(request.user, request.data.get("voice_id"))
         convo = get_conversation(request.user.id, other.id, create=True)
         message = DirectMessage.objects.create(
-            conversation=convo, sender=request.user, text=serializer.validated_data["text"],
+            conversation=convo, sender=request.user, text=serializer.validated_data.get("text", ""), voice=voice,
         )
         convo.save(update_fields=["updated_at"])
         data = DirectMessageSerializer(message).data

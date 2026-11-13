@@ -32,6 +32,8 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.dms",
     "apps.perks",
+    "apps.social",
+    "apps.games",
 ]
 
 MIDDLEWARE = [

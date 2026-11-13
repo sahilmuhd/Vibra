@@ -90,6 +90,12 @@ class PublicProfileView(generics.RetrieveAPIView):
     lookup_field = "username"
     queryset = Profile.objects.all()
 
+    def get_object(self):
+        profile = super().get_object()
+        from apps.social.services import record_visit
+        record_visit(self.request.user, profile.user_id)   # "who viewed my profile"
+        return profile
+
 
 class PasswordResetRequestView(APIView):
     """Step 1: User submits their email. We generate a secure token,
