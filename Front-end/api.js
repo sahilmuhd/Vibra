@@ -175,11 +175,16 @@ const Api = {
     return this.request(`/rooms/${q ? "?" + q : ""}`);
   },
 
-  async createRoom({ name, category, description }) {
+  async createRoom({ name, category, description, password }) {
     return this.request("/rooms/", {
       method: "POST",
-      body: { name, category, description },
+      body: password ? { name, category, description, password } : { name, category, description },
     });
+  },
+
+  // Host settings: theme, announcement, welcome_message, slow_mode, password ("" removes it).
+  async updateRoomSettings(roomId, fields) {
+    return this.request(`/rooms/${roomId}/settings/`, { method: "POST", body: fields });
   },
 
   async getRoom(roomId) {
@@ -187,8 +192,8 @@ const Api = {
   },
 
   // Registers the caller as "in the room" and returns the full room snapshot.
-  async joinRoom(roomId) {
-    return this.request(`/rooms/${roomId}/join/`, { method: "POST" });
+  async joinRoom(roomId, password) {
+    return this.request(`/rooms/${roomId}/join/`, { method: "POST", body: password ? { password } : {} });
   },
 
   // Frees the caller's seat/hand-raise and removes them from the room.

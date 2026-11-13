@@ -5,6 +5,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.levels import is_admin
 from apps.accounts.serializers import PublicUserSerializer
 from apps.rooms.models import Room
 
@@ -18,13 +19,19 @@ class StoreView(APIView):
 
     def get(self, request):
         now = timezone.now()
-        owned = {u.item_id: u.expires_at for u in UserItem.objects.filter(user=request.user, expires_at__gt=now)}
+        items = list(StoreItem.objects.filter(is_active=True))
+        admin = is_admin(request.user)
+        if admin:
+            owned = {i.id: services.FOREVER for i in items}
+        else:
+            owned = {u.item_id: u.expires_at for u in UserItem.objects.filter(user=request.user, expires_at__gt=now)}
         profile = request.user.profile
         worn = {StoreItem.KIND_FRAME: profile.active_frame(now), StoreItem.KIND_MOUNT: profile.active_mount(now)}
         return Response([{
             "id": i.id, "kind": i.kind, "key": i.key, "name": i.name, "price": i.price, "days": i.days,
             "owned_until": owned.get(i.id), "equipped": worn.get(i.kind) == i.key and i.id in owned,
-        } for i in StoreItem.objects.filter(is_active=True)])
+            "free_for_admin": admin,
+        } for i in items])
 
 
 class BuyView(APIView):

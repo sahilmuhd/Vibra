@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import PublicUserSerializer
 
+from .levels import level_info, room_level
 from .models import Gift, GiftEvent, HandRaise, Message, Room, Seat
 
 
@@ -13,16 +14,26 @@ class RoomListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Room
-        fields = ["id", "name", "category", "description", "host", "is_live", "online_count", "thumbnail_seed", "gift_total"]
+        fields = ["id", "name", "category", "description", "host", "is_live", "online_count", "thumbnail_seed",
+                  "gift_total", "theme", "has_password", "level", "seat_count"]
         # Clients must not decide liveness or the thumbnail seed.
-        read_only_fields = ["id", "is_live", "thumbnail_seed"]
+        read_only_fields = ["id", "is_live", "thumbnail_seed", "theme", "seat_count"]
         extra_kwargs = {"name": {"min_length": 2}}
 
     # Coins gifted in the room so far (the trophy score); annotated by room_queryset().
     gift_total = serializers.SerializerMethodField()
 
+    has_password = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
+
     def get_gift_total(self, obj):
         return getattr(obj, "gift_total", 0) or 0
+
+    def get_has_password(self, obj):
+        return bool(obj.password)
+
+    def get_level(self, obj):
+        return room_level(self.get_gift_total(obj))
 
     def get_online_count(self, obj):
         """Everyone currently in the room (listeners + speakers). Uses the
@@ -44,10 +55,16 @@ class RoomDetailSerializer(RoomListSerializer):
     moderator_ids = serializers.SerializerMethodField()
     hand_raises = serializers.SerializerMethodField()
 
+    level_info = serializers.SerializerMethodField()
+
     class Meta(RoomListSerializer.Meta):
         fields = RoomListSerializer.Meta.fields + [
-            "seats", "voice_room_name", "moderator_ids", "hand_raises", "gift_total",
+            "seats", "voice_room_name", "moderator_ids", "hand_raises",
+            "announcement", "welcome_message", "slow_mode", "level_info",
         ]
+
+    def get_level_info(self, obj):
+        return level_info(self.get_gift_total(obj))
 
     def get_hand_raises(self, obj):
         # Oldest first: the host answers requests in the order they came in.

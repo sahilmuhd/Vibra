@@ -23,6 +23,14 @@ class Room(models.Model):
     # provider's room identity can be rotated without touching this row.
     voice_room_name = models.CharField(max_length=64, unique=True)
 
+    # Host-controlled settings (phase 4).
+    SLOW_MODE_CHOICES = [0, 5, 10, 30, 60]
+    theme = models.CharField(max_length=32, blank=True)           # '' = the starry default
+    password = models.CharField(max_length=128, blank=True)       # hashed; '' = open room
+    announcement = models.CharField(max_length=200, blank=True)   # pinned at the top of chat
+    welcome_message = models.CharField(max_length=200, blank=True)
+    slow_mode = models.PositiveSmallIntegerField(default=0)       # seconds between messages
+
     def __str__(self):
         return self.name
 

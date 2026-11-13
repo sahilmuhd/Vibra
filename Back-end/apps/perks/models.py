@@ -10,7 +10,9 @@ class StoreItem(models.Model):
     client draws; the artwork lives in the frontend."""
     KIND_FRAME = "frame"
     KIND_MOUNT = "mount"
-    KINDS = [(KIND_FRAME, "Avatar frame"), (KIND_MOUNT, "Mount")]
+    KIND_THEME = "theme"   # a room background the owner can apply to rooms they host
+    KINDS = [(KIND_FRAME, "Avatar frame"), (KIND_MOUNT, "Mount"), (KIND_THEME, "Room theme")]
+    WEARABLE = (KIND_FRAME, KIND_MOUNT)
 
     kind = models.CharField(max_length=10, choices=KINDS)
     key = models.CharField(max_length=32)

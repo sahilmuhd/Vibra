@@ -27,7 +27,8 @@ function badgesHTML(u){
   const wealth = Number(u.wealth_level != null ? u.wealth_level : u.level) || 1;
   const charm = Number(u.charm_level != null ? u.charm_level : u.charm) || 0;
   const vip = Math.min(5, Number(u.vip) || 0);
-  return `<span class="bdg wealth" title="Wealth level">${ic('gem')}${wealth}</span>`
+  return (u.is_admin ? `<span class="bdg admin" title="Vibra admin">ADMIN</span>` : '')
+    + `<span class="bdg wealth" title="Wealth level">${ic('gem')}${wealth}</span>`
     + (charm > 1 ? `<span class="bdg charm" title="Charm level">${ic('heart')}${charm}</span>` : '')
     + (vip ? `<span class="bdg vip vip-${vip}" title="VIP ${vip}">VIP${vip}</span>` : '');
 }
@@ -60,6 +61,7 @@ async function openStore(tab){
 function daysLeft(iso){
   const ms = new Date(iso).getTime() - Date.now();
   if(ms <= 0) return '';
+  if(ms > 3650 * 86400000) return 'Forever';
   const d = Math.floor(ms / 86400000), h = Math.floor(ms / 3600000) % 24;
   return d > 0 ? `${d}d ${h}h left` : `${h || 1}h left`;
 }
@@ -69,7 +71,13 @@ function renderStore(){
   const me = STATE.currentUser || {};
   const worn = storeItems.find(i => i.kind === tab && i.equipped);
   const prev = document.getElementById('store-preview');
-  if(tab === 'frame'){
+  document.getElementById('store-admin-note').hidden = !storeItems.some(i => i.free_for_admin);
+  if(tab === 'theme'){
+    const room = STATE.activeRoom;
+    const cur = room && STATE.isHost ? (room.theme || '') : null;
+    prev.innerHTML = `<div class="theme-swatch t-${cur ? escapeAttr(cur) : 'starry'}"></div>
+      <div class="store-preview-t">${cur !== null ? `Your room uses <b>${escapeHTML((ROOM_THEMES[cur] || ROOM_THEMES['']).name)}</b>` : 'Themes change your room\'s background for everyone'}</div>`;
+  } else if(tab === 'frame'){
     prev.innerHTML = `<div class="avatar-wrap${frameClass(worn && worn.key)}"><img class="avatar" src="${imgSrc(me.avatar)}" alt=""></div>
       <div class="store-preview-t">${worn ? `Wearing <b>${escapeHTML(worn.name)}</b>` : 'No frame on'}</div>`;
   } else {
@@ -80,10 +88,15 @@ function renderStore(){
   const items = storeItems.filter(i => i.kind === tab);
   document.getElementById('store-grid').innerHTML = items.map(i => {
     const owned = !!i.owned_until;
-    const visual = tab === 'frame'
+    const visual = tab === 'theme'
+      ? `<div class="theme-swatch t-${ROOM_THEMES[i.key] ? escapeAttr(i.key) : 'starry'}"></div>`
+      : tab === 'frame'
       ? `<div class="avatar-wrap sm${frameClass(i.key)}"><img class="avatar" src="${imgSrc(me.avatar)}" alt=""></div>`
       : `<button type="button" class="mount-thumb" data-preview-mount="${escapeAttr(i.key)}" aria-label="Preview">${escapeHTML((MOUNTS[i.key] || {}).emoji || '🚗')}<span>${ic('play')}</span></button>`;
-    const action = i.equipped
+    const action = tab === 'theme'
+      ? (owned ? `<button type="button" class="store-btn" data-apply-theme="${escapeAttr(i.key)}">${STATE.activeRoom && STATE.isHost ? 'Use in room' : 'Owned'}</button>`
+               : `<button type="button" class="store-btn buy" data-buy="${Number(i.id)}">${ic('coins')} ${Number(i.price).toLocaleString()}</button>`)
+      : i.equipped
       ? `<button type="button" class="store-btn ghost" data-unequip="${escapeAttr(i.kind)}">Take off</button>`
       : owned ? `<button type="button" class="store-btn" data-equip="${Number(i.id)}">Use</button>`
               : `<button type="button" class="store-btn buy" data-buy="${Number(i.id)}">${ic('coins')} ${Number(i.price).toLocaleString()}</button>`;
@@ -91,7 +104,7 @@ function renderStore(){
       ${visual}
       <div class="nm">${escapeHTML(i.name)}</div>
       <div class="meta">${owned ? escapeHTML(daysLeft(i.owned_until)) + (i.equipped ? ' · in use' : '') : `${Number(i.days)} days`}</div>
-      ${action}${owned && !i.equipped ? `<button type="button" class="store-renew" data-buy="${Number(i.id)}">Renew ${ic('coins')}${Number(i.price).toLocaleString()}</button>` : ''}
+      ${action}${owned && !i.equipped && !i.free_for_admin ? `<button type="button" class="store-renew" data-buy="${Number(i.id)}">Renew ${ic('coins')}${Number(i.price).toLocaleString()}</button>` : ''}
     </div>`;
   }).join('') || emptyStateHTML('🛍️', 'Nothing here yet', '');
 }
@@ -341,6 +354,13 @@ function bindPerks(){
     if(eq) return storeAction(() => Api.equipItem(Number(eq.dataset.equip)), 'Now in use');
     const un = e.target.closest('[data-unequip]');
     if(un) return storeAction(() => Api.equipItem(null, un.dataset.unequip), 'Taken off');
+    const ap = e.target.closest('[data-apply-theme]');
+    if(ap){
+      if(!(STATE.activeRoom && STATE.isHost && typeof STATE.activeRoom.id === 'number')){ showToast('Open a room you host, then pick this theme in Room settings', 'info'); return; }
+      return Api.updateRoomSettings(STATE.activeRoom.id, { theme: ap.dataset.applyTheme })
+        .then(s => { applyRoomSettings(s, false); closeOverlay('screen-store'); showToast('Theme applied to your room', 'success'); })
+        .catch(err => showToast(err.message || 'Could not apply theme', 'error'));
+    }
     const pv = e.target.closest('[data-preview-mount]');
     if(pv){ const me = STATE.currentUser || {}; FX.mountEntry({ mount: pv.dataset.previewMount, name: me.name || 'You', avatar: me.avatar, vip: me.vip, preview: true }); }
   });

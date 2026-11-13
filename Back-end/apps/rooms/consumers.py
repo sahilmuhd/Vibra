@@ -11,6 +11,7 @@ from .services import may_listen
 HEARTBEAT_SECONDS = 60
 MIN_TICK_INTERVAL = 0.1       # speaking_tick: at most ~10/s per connection
 MIN_REACTION_INTERVAL = 0.5   # reaction: at most 2/s per connection
+MIN_MUSIC_INTERVAL = 0.5      # now-playing updates
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -34,6 +35,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self._heartbeat_task = None
         self._last_tick = 0.0
         self._last_reaction = 0.0
+        self._last_music = 0.0
         self.user = self.scope.get("user")
         self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
         self.group_name = f"room_{self.room_id}"
@@ -105,6 +107,20 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     "payload": {"user_id": self.user.id, "emoji": emoji},
                 },
             )
+        elif kind == "music":
+            # "Now playing" label from the host/a moderator who is streaming music.
+            playing = bool(content.get("playing"))
+            # "Stopped" always goes through, so listeners never keep a stale bar.
+            if playing and now - self._last_music < MIN_MUSIC_INTERVAL:
+                return
+            self._last_music = now
+            if not await self.can_dj(self.room_id, self.user):
+                return
+            title = " ".join(str(content.get("title", ""))[:80].split())
+            await self.channel_layer.group_send(self.group_name, {
+                "type": "music_event",
+                "payload": {"user_id": self.user.id, "title": title, "playing": playing},
+            })
         elif kind == "ping":
             await self.touch()
 
@@ -151,6 +167,23 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def speaking_tick(self, event):
         await self.send_json({"event": "speaking_tick", **event["payload"]})
+
+    async def music_event(self, event):
+        await self.send_json({"event": "music", **event["payload"]})
+
+    async def room_settings(self, event):
+        await self.send_json({"event": "room_settings", **event["payload"]})
+
+    async def room_level(self, event):
+        await self.send_json({"event": "room_level", **event["payload"]})
+
+    @staticmethod
+    async def can_dj(room_id, user):
+        def check():
+            from .services import can_moderate
+            room = Room.objects.filter(id=room_id).first()
+            return room is not None and can_moderate(room, user)
+        return await sync_to_async(check)()
 
     @staticmethod
     async def room_is_live(room_id):

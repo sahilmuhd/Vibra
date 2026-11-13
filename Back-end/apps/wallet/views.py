@@ -6,6 +6,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.rooms.levels import ensure_seats, room_gift_total, room_level
 from apps.rooms.models import Gift, Room
 from apps.rooms.realtime import broadcast_to_everyone, broadcast_to_room
 from apps.rooms.serializers import GiftSerializer, SendGiftSerializer
@@ -142,6 +143,10 @@ class SendGiftView(APIView):
             "combo": data["combo"],
         }
         broadcast_to_room(room.id, "gift.sent", payload)
+        total = room_gift_total(room)
+        seats = ensure_seats(room, total)
+        if seats:
+            broadcast_to_room(room.id, "room.level", {"level": room_level(total), "seat_count": seats})
         if gift.cost * data["combo"] >= settings.GLOBAL_GIFT_MIN:
             broadcast_to_everyone("gift.global", {**payload, "room_id": room.id, "room_name": room.name})
         return Response({"gift_event_id": event.id, "balance": get_balance(request.user)})

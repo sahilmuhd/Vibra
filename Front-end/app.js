@@ -101,6 +101,8 @@ function apiRoomToLocal(r){
     grad: ROOM_GRADIENTS[r.id % ROOM_GRADIENTS.length],
     hostId: r.host ? r.host.id : null,
     hostDisplay: r.host ? { name: r.host.username, username: r.host.username, avatar: r.host.avatar_url, level: r.host.level, vip: r.host.vip || 0, frame: r.host.frame || '' } : null,
+    theme: r.theme || '', hasPassword: !!r.has_password, level: r.level || 1, seatCount: r.seat_count || 10,
+    announcement: r.announcement || '', welcome: r.welcome_message || '', slowMode: r.slow_mode || 0,
   };
 }
 async function refreshApiRooms(){
@@ -260,6 +262,7 @@ function profileToAccount(p){
     charm_level: p.charm ? p.charm.level : 1,
     vip: p.vip ? (p.vip.tier || 0) : 0,
     frame: p.frame || '', mount: p.mount || '',
+    is_admin: !!p.is_admin,
   };
 }
 
@@ -368,10 +371,11 @@ function roomCardHTML(room, idx){
     <div class="rr-cover" style="background:${room.grad};">${cover}
       ${hot ? `<span class="rr-hot">HOT</span>` : ''}
       ${room.live ? `<span class="rr-live"><span class="badge-live-dot"></span>LIVE</span>` : ''}
+      ${room.hasPassword ? `<span class="rr-lock" title="Password needed">${ic('lock')}</span>` : ''}
     </div>
     <div class="rr-main">
       <div class="rr-name">${escapeHTML(room.name)}</div>
-      <div class="rr-tags"><span class="rr-cat">${escapeHTML(room.category)}</span>${host ? `<span class="rr-host">by ${escapeHTML(host.name)}</span>` : ''}</div>
+      <div class="rr-tags">${Number(room.level) > 1 ? `<span class="rr-lvl">Lv ${Number(room.level)}</span>` : ''}<span class="rr-cat">${escapeHTML(room.category)}</span>${host ? `<span class="rr-host">by ${escapeHTML(host.name)}</span>` : ''}</div>
       <div class="rr-desc">${escapeHTML(room.desc || 'Come say hi 👋')}</div>
     </div>
     <div class="rr-side">
@@ -486,12 +490,13 @@ async function openRoomInner(roomId){
     // Join registers us as "in the room" server-side (online count, chat
     // permission, cleanup on leave) and returns a fresh snapshot incl. seats.
     try{
-      const detail = await Api.joinRoom(roomId);
+      const detail = typeof joinRoomWithPassword === 'function' ? await joinRoomWithPassword(roomId) : await Api.joinRoom(roomId);
       room = apiRoomToLocal(detail);
       room._seats = detail.seats; // raw backend seat rows, converted below
       room._moderatorIds = detail.moderator_ids || [];
       room._handRaises = detail.hand_raises || [];
     }catch(e){
+      if(e.cancelled) return;
       showToast(e.message || 'Could not join room', 'error');
       refreshApiRooms().then(renderHome);   // e.g. the room ended: drop it from the list
       return;
@@ -544,7 +549,7 @@ async function openRoomInner(roomId){
         system: m.is_system,
         displayName: m.user ? m.user.username : 'Vibra',
         avatarUrl: m.user ? m.user.avatar_url : '',
-        level: m.user && m.user.level, userId: m.user && m.user.id, vip: m.user && m.user.vip,
+        level: m.user && m.user.level, userId: m.user && m.user.id, vip: m.user && m.user.vip, isAdmin: m.user && m.user.is_admin,
       })).join('');
     }catch(e){ box.innerHTML = ''; }
     box.scrollTop = box.scrollHeight;
@@ -557,10 +562,17 @@ async function openRoomInner(roomId){
   }
 
   // Party-room welcome: pinned system note + your own entry banner.
-  appendChatMessage({ system:true, text:`Welcome to ${room.name}! Take a seat to talk, be kind, and send gifts to show some love. 🎙️` });
+  appendChatMessage({ system:true, text: room.welcome || `Welcome to ${room.name}! Take a seat to talk, be kind, and send gifts to show some love. 🎙️` });
+  if(typeof applyRoomSettings === 'function' && isApiRoom){
+    applyRoomSettings({ theme: room.theme, announcement: room.announcement, welcome_message: room.welcome, slow_mode: room.slowMode, has_password: room.hasPassword }, false);
+    updateRoomLevelChip();
+  }
+  const hostTools = STATE.isHost && isApiRoom;
+  ['tool-settings'].forEach(id => { const el = document.getElementById(id); if(el) el.hidden = !hostTools; });
+  { const m = document.getElementById('tool-music'); if(m) m.hidden = !(isApiRoom && canModerate()); }
   if(STATE.currentUser){
     const me = STATE.currentUser;
-    FX.entryBanner({ name: me.name, avatar: me.avatar, level: me.level, vip: me.vip });
+    FX.entryBanner({ name: me.name, avatar: me.avatar, level: me.level, vip: me.vip, admin: me.is_admin });
     if(me.mount && FX.mountEntry) FX.mountEntry({ mount: me.mount, name: me.name, avatar: me.avatar, vip: me.vip });
     appendChatMessage({ notice:true, name: STATE.currentUser.name, text:'joined the room' });
   }
@@ -591,7 +603,7 @@ function seatsFromDetail(detail){
     name: s.user.username,
     level: s.user.level,
     avatar: s.user.avatar_url,
-    frame: s.user.frame || '', vip: s.user.vip || 0,
+    frame: s.user.frame || '', vip: s.user.vip || 0, isAdmin: !!s.user.is_admin,
     wealthLevel: s.user.wealth_level, charmLevel: s.user.charm_level,
     muted: s.is_muted,
     speaking:false,
@@ -654,6 +666,8 @@ async function refreshActiveRoom(roomId){
     syncMyMicFromServer();
     STATE.activeRoom.online = detail.online_count || 0;
     if(detail.gift_total != null) STATE.activeRoom.giftTotal = detail.gift_total;
+    if(detail.level) STATE.activeRoom.level = detail.level;
+    if(typeof updateRoomLevelChip === 'function') updateRoomLevelChip();
     updateRoomStats();
     renderMicGrid();
   }catch(e){
@@ -716,12 +730,12 @@ function connectRoomSocket(roomId){
           system: event.is_system,
           displayName: event.user ? event.user.username : 'Vibra',
           avatarUrl: event.user ? event.user.avatar_url : '',
-          level: event.user && event.user.level, userId: event.user && event.user.id, vip: event.user && event.user.vip,
+          level: event.user && event.user.level, userId: event.user && event.user.id, vip: event.user && event.user.vip, isAdmin: event.user && event.user.is_admin,
         }));
         box.scrollTop = box.scrollHeight;
       }else if(event.event === 'presence_update' && event.action === 'joined' && event.user){
         if(!(STATE.currentUser && event.user.id === STATE.currentUser.id)){
-          FX.entryBanner({ name: event.user.username, avatar: event.user.avatar_url, level: event.user.level, vip: event.user.vip });
+          FX.entryBanner({ name: event.user.username, avatar: event.user.avatar_url, level: event.user.level, vip: event.user.vip, admin: event.user.is_admin });
           if(event.user.mount && FX.mountEntry) FX.mountEntry({ mount: event.user.mount, name: event.user.username, avatar: event.user.avatar_url, vip: event.user.vip });
           appendChatMessage({ notice:true, name: event.user.username, text:'joined the room' }, true);
         }
@@ -762,6 +776,16 @@ function connectRoomSocket(roomId){
         // Gifts move wealth/charm/VIP: pick up the new badges once the effects have played.
         clearTimeout(STATE.giftRefreshTimer);
         STATE.giftRefreshTimer = setTimeout(() => scheduleRoomRefresh(roomId), 2500);
+      }else if(event.event === 'room_settings'){
+        if(typeof applyRoomSettings === 'function') applyRoomSettings(event, true);
+      }else if(event.event === 'room_level'){
+        STATE.activeRoom.level = event.level;
+        if(typeof updateRoomLevelChip === 'function') updateRoomLevelChip();
+        appendChatMessage({ system:true, text:`🎉 Room reached Lv ${Number(event.level)} — ${Number(event.seat_count)} mic seats unlocked!` });
+        if(typeof FX !== 'undefined') FX.burstAt(document.getElementById('room-level'), 40);
+        scheduleRoomRefresh(roomId);
+      }else if(event.event === 'music'){
+        if(!(STATE.currentUser && event.user_id === STATE.currentUser.id) && typeof showNowPlaying === 'function') showNowPlaying(event);
       }else if(event.event === 'hand_raised'){
         if(canModerate() && event.user){
           if(!STATE.handQueue.some(r => r.id === event.user.id || r.name === event.user.username)){
@@ -860,9 +884,11 @@ async function connectVoice(roomId){
     room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
       if(track.kind !== LivekitClient.Track.Kind.Audio) return;
       const el = track.attach();
-      el.id = `voice-audio-${participant.identity}`;
+      const isMusic = publication && publication.source === LivekitClient.Track.Source.ScreenShareAudio;
+      el.id = isMusic ? `voice-audio-music-${participant.identity}` : `voice-audio-${participant.identity}`;
+      if(isMusic) el.classList.add('music-audio');
       el.autoplay = true;
-      el.muted = !speakerOn;
+      el.muted = !speakerOn || (isMusic && !!STATE.musicMuted);
       document.body.appendChild(el);
     });
     room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
@@ -959,7 +985,9 @@ function seatHTML(p, idx){
 
 function renderMicGrid(){
   const seats = currentSeats();
-  document.getElementById('mic-grid').innerHTML = seats.map((p,idx)=> seatHTML(p, idx)).join('');
+  const grid = document.getElementById('mic-grid');
+  grid.classList.toggle('many', seats.length > 10);
+  grid.innerHTML = seats.map((p,idx)=> seatHTML(p, idx)).join('');
   updateVoiceControlUI();
   updateRoomStats();
 }
@@ -984,6 +1012,7 @@ function resetRoomChrome(){
   const mini = document.getElementById('room-mini');
   if(mini) mini.hidden = true;
   ['entry-banner-layer', 'gift-banner-layer'].forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = ''; });
+  if(typeof clearRoomPlus === 'function') clearRoomPlus();
   if(typeof FX !== 'undefined') FX.Combo.hide();
 }
 // "Keep": hide the room but stay in it (voice and chat keep running).
@@ -1020,7 +1049,7 @@ function openSeatProfile(idx){
   if(!seat || seat.empty) return;
   document.getElementById('seat-profile-avatar').src = safeImgUrl(seat.avatar);
   document.getElementById('seat-profile-frame').className = 'avatar-wrap lg' + frameCls(seat.frame);
-  document.getElementById('seat-profile-badges').innerHTML = userBadges({ wealth_level: seat.wealthLevel || seat.level, charm_level: seat.charmLevel, vip: seat.vip });
+  document.getElementById('seat-profile-badges').innerHTML = userBadges({ wealth_level: seat.wealthLevel || seat.level, charm_level: seat.charmLevel, vip: seat.vip, is_admin: seat.isAdmin });
   document.getElementById('seat-profile-name').textContent = seat.isMe ? (STATE.currentUser?STATE.currentUser.name:'You') : seat.name;
   document.getElementById('seat-profile-level').textContent = seat.level ? `Lv ${seat.level}` : 'Lv —';
   document.getElementById('seat-profile-sub').innerHTML = seat.muted ? ic('mic-off') + ' Muted on mic' : ic('mic') + ' Speaking';
@@ -1319,7 +1348,8 @@ function startRoomAmbience(){
 // Name pills: level, Host, Mod.
 function msgPills(m){
   const vip = Math.min(5, Number(m.vip) || 0);
-  let out = vip ? `<span class="bdg vip vip-${vip}">VIP${vip}</span>` : '';
+  let out = m.isAdmin ? '<span class="bdg admin">ADMIN</span>' : '';
+  out += vip ? `<span class="bdg vip vip-${vip}">VIP${vip}</span>` : '';
   out += m.level ? `<span class="msg-pill lv">Lv ${escapeHTML(m.level)}</span>` : '';
   const hostId = STATE.activeRoom && STATE.activeRoom.hostId;
   if(m.userId != null && hostId != null && m.userId === hostId) out += '<span class="msg-pill host">Host</span>';
@@ -1398,7 +1428,13 @@ function sendMessage(){
     // no optimistic local append — the backend broadcasts this message back
     // over the WebSocket to everyone in the room, including us, so it
     // renders once the server confirms it rather than twice.
-    Api.sendMessage(STATE.activeRoom.id, text).catch(e => showToast(e.message || 'Message failed to send', 'error'));
+    Api.sendMessage(STATE.activeRoom.id, text).catch(e => {
+      showToast(e.message || 'Message failed to send', 'error');
+      if(!input.value){
+        document.getElementById('room-compose').classList.add('open');
+        input.value = text; updateCharCounter(); if(sendBtn) sendBtn.disabled = false;
+      }
+    });
     return;
   }
   const msg = {who:'me', text, time: nowTime()};
@@ -1572,6 +1608,9 @@ function renderRoomMoreSheet(){
     rows.push(`<div class="sheet-action-row" data-more-action="mute-all"><div class="ic">${ic('mic-off')}</div>Mute everyone on mic</div>`);
     rows.push(`<div class="sheet-action-row" data-more-action="lock-seats"><div class="ic">${ic(allLocked?'lock-open':'lock')}</div>${allLocked?'Unlock empty seats':'Lock empty seats'}</div>`);
   }
+  if(STATE.isHost && isApiActiveRoom()){
+    rows.push(`<div class="sheet-action-row" data-more-action="room-settings"><div class="ic">${ic('palette')}</div>Room settings</div>`);
+  }
   if(STATE.isHost){
     rows.push(`<div class="sheet-action-row danger" data-more-action="end-room"><div class="ic">${ic('octagon-x')}</div>End room for everyone</div>`);
   } else {
@@ -1659,6 +1698,7 @@ function handleRoomMoreAction(action){
       .catch(e => showToast(e.message || 'Could not send report', 'error'));
   }
   else if(action==='share'){ shareRoom(); }
+  else if(action==='room-settings'){ openRoomSettings(); }
   else if(action==='mute-all'){
     if(api){
       const targets = currentSeats().map((s,i)=>({s,i}))
@@ -1995,7 +2035,7 @@ function renderOwnProfile(){
     target.innerHTML = apiProfileHTML({
       id: u.id, username: u.username, avatar_url: u.avatar, bio: u.bio, country: u.country,
       level: u.level || 1, followers_count: u.followers || 0, following_count: u.following || 0,
-      live_room: null, wealth_level: u.wealth_level, charm_level: u.charm_level, vip: u.vip, vip_tier: u.vip, frame: u.frame,
+      live_room: null, wealth_level: u.wealth_level, charm_level: u.charm_level, vip: u.vip, vip_tier: u.vip, frame: u.frame, is_admin: u.is_admin,
     }, true);
     return;
   }
@@ -2243,6 +2283,7 @@ function statusOf(p){
     wealth_level: p.wealth ? p.wealth.level : (p.wealth_level || p.level || 1),
     charm_level: p.charm ? p.charm.level : (p.charm_level || 1),
     vip: p.vip && typeof p.vip === 'object' ? (p.vip.tier || 0) : (Number(p.vip) || 0),
+    is_admin: !!p.is_admin,
   };
 }
 function apiProfileHTML(p, isSelf){
@@ -2415,9 +2456,9 @@ function renderCreateRoomCategories(){
     `<button type="button" class="chip ${i===0?'active':''}" data-cr-cat="${c}">${c}</button>`).join('');
 }
 // Returns true on success so the form is only cleared/closed when the room exists.
-async function createRoom(name, desc, category){
+async function createRoom(name, desc, category, password){
   try{
-    const room = await Api.createRoom({ name, category: category.toLowerCase(), description: desc || 'A new Vibra room.' });
+    const room = await Api.createRoom({ name, category: category.toLowerCase(), description: desc || 'A new Vibra room.', password: password || '' });
     await refreshApiRooms();
     renderHome();
     showToast('Room created successfully', 'success');
@@ -2930,6 +2971,12 @@ function bindRoomPartyUI(){
     else if(tool === 'effects'){ FX.setEnabled(!FX.enabled()); showToast(FX.enabled() ? 'Gift effects on' : 'Gift effects off', 'info'); }
     else if(tool === 'clean'){ document.getElementById('chat-messages').innerHTML = ''; showToast('Chat cleared on your screen', 'info'); }
     else if(tool === 'options'){ renderRoomMoreSheet(); openModal('room-more-modal'); }
+    else if(tool === 'settings'){ openRoomSettings(); }
+    else if(tool === 'music'){
+      if(Music.el){ showToast('Music is already playing — use the bar to pause or stop', 'info'); return; }
+      if(!Music.canPlay()){ showToast('Take a seat on the mic to play music', 'info'); return; }
+      document.getElementById('music-file').click();
+    }
   });
   document.getElementById('room-keep').addEventListener('click', minimizeRoom);
   document.getElementById('room-mini').addEventListener('click', restoreRoom);
@@ -3052,6 +3099,7 @@ function bindCreateRoom(){
       document.querySelectorAll('.privacy-opt').forEach(o=>o.classList.remove('active'));
       opt.classList.add('active');
       selectedPrivacy = opt.dataset.privacy;
+      document.getElementById('cr-password-wrap').hidden = selectedPrivacy !== 'private';
     });
   });
   document.getElementById('cr-image-picker').addEventListener('click', ()=> showToast('Image upload (demo)', 'info'));
@@ -3060,10 +3108,10 @@ function bindCreateRoom(){
     const form = e.target;
     const name = document.getElementById('cr-name').value.trim();
     if(!name){ showToast('Room name is required', 'error'); return; }
-    if(selectedPrivacy === 'private'){
-      // The backend has no private-room support yet; silently creating a PUBLIC room
-      // for someone who asked for private would be a privacy surprise.
-      showToast('Private rooms are not available yet — choose Public to continue', 'info');
+    const password = selectedPrivacy === 'private' ? document.getElementById('cr-password').value.trim() : '';
+    if(selectedPrivacy === 'private' && (password.length < 4 || password.length > 32)){
+      showToast('Private rooms need a password of 4-32 characters', 'error');
+      document.getElementById('cr-password').focus();
       return;
     }
     const desc = document.getElementById('cr-desc').value.trim();
@@ -3071,11 +3119,14 @@ function bindCreateRoom(){
     const category = activeCatChip ? activeCatChip.dataset.crCat : 'Talk';
     const submit = form.querySelector('button[type="submit"]');
     if(submit) submit.disabled = true;           // no double-create on a slow network
-    const ok = await createRoom(name, desc, category);
+    const ok = await createRoom(name, desc, category, password);
     if(submit) submit.disabled = false;
     if(!ok) return;                              // keep what the user typed
     closeOverlay('screen-create-room');
     form.reset();
+    selectedPrivacy = 'public';
+    document.getElementById('cr-password-wrap').hidden = true;
+    document.querySelectorAll('.privacy-opt').forEach(o => o.classList.toggle('active', o.dataset.privacy === 'public'));
     document.querySelectorAll('#cr-category .chip').forEach((c,i)=>c.classList.toggle('active', i===0));
   });
 }
@@ -3172,6 +3223,7 @@ function init(){
   bindCreateRoom();
   bindSettings();
   if(typeof bindPerks === 'function') bindPerks();
+  if(typeof bindRoomPlus === 'function') bindRoomPlus();
   bindOverlaysAndModals();
   bindGlobalKeyboard();
   renderDiscoverTab();

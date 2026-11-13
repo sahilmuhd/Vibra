@@ -12,6 +12,11 @@ from apps.wallet.services import get_balance
 
 from .models import DailyCheckin, StoreItem, TaskClaim, UserItem
 
+from apps.accounts.levels import is_admin
+
+# What "forever" means for the admin's free items.
+FOREVER = timezone.make_aware(datetime(2099, 12, 31))
+
 # Day 1..7 of a check-in streak; day 7 repeats once the streak is complete.
 DAILY_REWARDS = [50, 80, 100, 150, 200, 300, 500]
 
@@ -29,6 +34,12 @@ def day_start(d):
 def buy_item(user, item):
     if not item.is_active:
         raise ValidationError("This item is no longer sold.")
+    if is_admin(user):
+        # The main admin owns everything already: "buying" just puts it on.
+        owned, _ = UserItem.objects.update_or_create(user=user, item=item, defaults={"expires_at": FOREVER})
+        if item.kind in StoreItem.WEARABLE:
+            equip(user, item, owned)
+        return owned
     get_user_model().objects.select_for_update().get(pk=user.pk)  # serialise spends, like gifts
     if get_balance(user) < item.price:
         raise ValidationError("Not enough coins.")
@@ -40,6 +51,8 @@ def buy_item(user, item):
     owned.save(update_fields=["expires_at"])
     Transaction.objects.create(user=user, type=Transaction.TYPE_SHOP, amount=-item.price,
                                label=f"Bought {item.name} ({item.days} days)")
+    if item.kind not in StoreItem.WEARABLE:
+        return owned          # themes are applied per room, not worn
     profile = ensure_profile(user)
     # Auto-equip if nothing of this kind is active, or if it is the one already worn.
     current = profile.active_frame() if item.kind == StoreItem.KIND_FRAME else profile.active_mount()
@@ -49,7 +62,11 @@ def buy_item(user, item):
 
 
 def equip(user, item, owned=None):
+    if item.kind not in StoreItem.WEARABLE:
+        raise ValidationError("Themes are applied from your room's settings.")
     profile = ensure_profile(user)
+    if is_admin(user) and owned is None:
+        owned, _ = UserItem.objects.update_or_create(user=user, item=item, defaults={"expires_at": FOREVER})
     owned = owned or UserItem.objects.filter(user=user, item=item, expires_at__gt=timezone.now()).first()
     if owned is None or owned.expires_at <= timezone.now():
         raise ValidationError("Buy this item first.")
@@ -69,6 +86,18 @@ def unequip(user, kind):
     else:
         profile.mount_key, profile.mount_until = "", None
         profile.save(update_fields=["mount_key", "mount_until"])
+
+
+def owns_theme(user, key):
+    """Room themes: '' (the starry default) is free; others must be owned (admin owns all)."""
+    if not key:
+        return True
+    item = StoreItem.objects.filter(kind=StoreItem.KIND_THEME, key=key, is_active=True).first()
+    if item is None:
+        return False
+    if is_admin(user):
+        return True
+    return UserItem.objects.filter(user=user, item=item, expires_at__gt=timezone.now()).exists()
 
 
 # ------------------------------------------------------------------ daily check-in

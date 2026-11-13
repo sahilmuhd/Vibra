@@ -1,6 +1,9 @@
 import uuid
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password, make_password
+from django.utils import timezone
+from rest_framework.exceptions import Throttled, ValidationError
 from django.db import transaction
 from django.db.models import Count, F, IntegerField, OuterRef, Subquery, Sum
 from django.db.models.functions import Coalesce
@@ -14,7 +17,11 @@ from apps.accounts.profiles import ensure_profile
 from apps.accounts.serializers import PublicUserSerializer
 from apps.notifications.services import notify_followers_live
 
+from apps.accounts.levels import is_admin
+from apps.perks.services import owns_theme
+
 from . import voice_admin
+from .levels import ensure_seats
 from .models import (
     GiftEvent, HandRaise, Message, Report, Room, RoomBan, RoomModerator, RoomMute, RoomParticipant, Seat,
 )
@@ -77,13 +84,16 @@ class RoomListCreateView(generics.ListCreateAPIView):
         # Atomic: previously a failure mid-way left a room with no/partial seats.
         ensure_profile(self.request.user)
         live = Room.objects.filter(host=self.request.user, is_live=True).count()
-        if live >= MAX_LIVE_ROOMS_PER_HOST:
+        if live >= MAX_LIVE_ROOMS_PER_HOST and not is_admin(self.request.user):
             raise PermissionDenied(
                 f"You can host at most {MAX_LIVE_ROOMS_PER_HOST} live rooms at a time."
             )
+        password = clean_password(self.request.data.get("password"))
         room = serializer.save(
             host=self.request.user,
             voice_room_name=f"vibra-{uuid.uuid4().hex[:12]}",
+            password=make_password(password) if password else "",
+            seat_count=20 if is_admin(self.request.user) else 10,
         )
         Seat.objects.bulk_create(
             [Seat(room=room, position=i) for i in range(room.seat_count)]
@@ -112,6 +122,14 @@ class JoinRoomView(APIView):
         if shut_out(room, request.user.id):
             return Response(BANNED, status=status.HTTP_403_FORBIDDEN)
         ensure_profile(request.user)
+        if room.password and not may_skip_password(room, request.user):
+            given = str(request.data.get("password") or "")
+            if not given:
+                return Response({"detail": "This room is private. Enter the password.", "code": "password_required"},
+                                status=status.HTTP_403_FORBIDDEN)
+            if not check_password(given, room.password):
+                return Response({"detail": "Wrong password.", "code": "password_wrong"},
+                                status=status.HTTP_403_FORBIDDEN)
         _, created = RoomParticipant.objects.get_or_create(room=room, user=request.user)
         snapshot = room_queryset().get(id=room.id)
         if created:
@@ -416,10 +434,81 @@ class MessageListCreateView(generics.ListCreateAPIView):
             raise PermissionDenied(BANNED["detail"])
         if not RoomParticipant.objects.filter(room=room, user=self.request.user).exists():
             raise PermissionDenied("Join the room before sending messages.")
+        if room.slow_mode and not can_moderate(room, self.request.user):
+            last = Message.objects.filter(room=room, user=self.request.user).order_by("-created_at").first()
+            if last:
+                wait = room.slow_mode - (timezone.now() - last.created_at).total_seconds()
+                if wait > 0:
+                    raise Throttled(wait=int(wait) + 1, detail=f"Slow mode is on — wait {int(wait) + 1}s.")
         message = serializer.save(room=room, user=self.request.user)
         broadcast_to_room(
             message.room_id, "message.new", MessageSerializer(message).data
         )
+
+
+def clean_password(raw):
+    """'' or None = no password. Otherwise 4-32 characters."""
+    pw = str(raw or "").strip()
+    if pw and not 4 <= len(pw) <= 32:
+        raise ValidationError({"password": "Room password must be 4-32 characters."})
+    return pw
+
+
+def may_skip_password(room, user):
+    return (room.host_id == user.id or is_admin(user)
+            or RoomModerator.objects.filter(room=room, user=user).exists()
+            or RoomParticipant.objects.filter(room=room, user=user).exists())
+
+
+def public_settings(room):
+    return {"theme": room.theme, "announcement": room.announcement, "welcome_message": room.welcome_message,
+            "slow_mode": room.slow_mode, "has_password": bool(room.password)}
+
+
+class RoomSettingsView(APIView):
+    """Host (or the main admin): theme, pinned announcement, welcome message,
+    slow mode and password. Send only the fields you want to change;
+    {"password": ""} removes the password."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, room_id):
+        room = get_object_or_404(Room, id=room_id)
+        return Response(public_settings(room))
+
+    def post(self, request, room_id):
+        room = get_object_or_404(Room, id=room_id)
+        if room.host_id != request.user.id and not is_admin(request.user):
+            raise PermissionDenied("Only the host can change room settings.")
+        if not room.is_live:
+            return Response(ENDED, status=status.HTTP_410_GONE)
+        data, changed = request.data, []
+        if "theme" in data:
+            theme = str(data.get("theme") or "")
+            if not owns_theme(request.user, theme):
+                raise ValidationError({"theme": "Get this theme in the store first."})
+            room.theme = theme
+            changed.append("theme")
+        for field in ("announcement", "welcome_message"):
+            if field in data:
+                setattr(room, field, str(data.get(field) or "").strip()[:200])
+                changed.append(field)
+        if "slow_mode" in data:
+            try:
+                slow = int(data.get("slow_mode") or 0)
+            except (TypeError, ValueError):
+                slow = -1
+            if slow not in Room.SLOW_MODE_CHOICES:
+                raise ValidationError({"slow_mode": "Choose 0, 5, 10, 30 or 60 seconds."})
+            room.slow_mode = slow
+            changed.append("slow_mode")
+        if "password" in data:
+            pw = clean_password(data.get("password"))
+            room.password = make_password(pw) if pw else ""
+            changed.append("password")
+        if changed:
+            room.save(update_fields=changed)
+            broadcast_to_room(room.id, "room.settings", public_settings(room))
+        return Response(public_settings(room))
 
 
 class ModeratorView(APIView):

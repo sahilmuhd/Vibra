@@ -70,7 +70,7 @@ test('profileToAccount maps /me payload incl. id and counts', () => {
   const { profileToAccount } = loadApp();
   const a = profileToAccount({ id: 9, username: 'sahil', avatar_url: 'https://x/y.svg', level: 2, bio: 'hi', country: 'IN', followers_count: 3, following_count: 4 });
   assert.deepEqual(a, { id: 9, name: 'sahil', username: 'sahil', avatar: 'https://x/y.svg', level: 2, bio: 'hi', country: 'IN', followers: 3, following: 4,
-    wealth_level: 2, charm_level: 1, vip: 0, frame: '', mount: '' });
+    wealth_level: 2, charm_level: 1, vip: 0, frame: '', mount: '', is_admin: false });
 });
 
 test('status fields map from /me and render on seats without perks.js', () => {
@@ -80,6 +80,16 @@ test('status fields map from /me and render on seats without perks.js', () => {
   app.STATE.currentUser = { id: 1 }; app.STATE.activeRoom = { id: 5 }; app.ROOM_SEATS_CACHE[5] = [];
   const seat = app.seatsFromDetail({ seats: [{ is_muted: false, user: { id: 2, username: 'x', level: 3, avatar_url: '', frame: '"><script>', vip: 4 } }] })[0];
   assert.ok(!/<script>/.test(app.seatHTML(seat, 0)));
+});
+
+test('room list row escapes and shows lock/level from the API', () => {
+  const app = loadApp();
+  const room = app.apiRoomToLocal({ id: 3, name: 'x', description: '', category: 'talk', online_count: 1, is_live: true,
+    has_password: true, level: 6, theme: '"><script>', host: { id: 1, username: 'h', avatar_url: '', level: 1 } });
+  const html = app.roomCardHTML(room, 0);
+  assert.ok(html.includes('rr-lock'));
+  assert.ok(html.includes('Lv 6'));
+  assert.ok(!/<script>/.test(html));
 });
 
 test('parseRoomId: digits become numbers (API rooms), others stay strings (demo rooms)', () => {

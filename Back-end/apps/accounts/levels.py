@@ -40,7 +40,19 @@ def vip_for(wealth_xp: int) -> int:
     return tier
 
 
-def vip_progress(wealth_xp: int) -> dict:
+def is_admin(user) -> bool:
+    """The main admin(s): Django superusers get every perk for free, forever."""
+    return bool(user is not None and getattr(user, "is_superuser", False))
+
+
+def vip_progress(wealth_xp: int, admin: bool = False) -> dict:
+    if admin:
+        return {"tier": 5, "spent": int(wealth_xp), "next_tier_at": None, "admin": True,
+                "tiers": [{"tier": t, "needs": need} for t, need in VIP_TIERS]}
+    return _vip_progress(wealth_xp)
+
+
+def _vip_progress(wealth_xp: int) -> dict:
     tier = vip_for(wealth_xp)
     nxt = next((need for t, need in VIP_TIERS if t == tier + 1), None)
     return {"tier": tier, "spent": int(wealth_xp), "next_tier_at": nxt,

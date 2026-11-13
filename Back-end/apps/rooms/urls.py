@@ -14,6 +14,7 @@ from .views import (
     RaiseHandView,
     RoomDetailView,
     RoomListCreateView,
+    RoomSettingsView,
     TakeSeatView,
     ToggleMuteView,
 )
@@ -35,5 +36,6 @@ urlpatterns = [
     path("<int:room_id>/hand-raise/<int:user_id>/<str:decision>/", HandRaiseDecisionView.as_view(), name="hand-raise-decision"),
     path("<int:room_id>/messages/", MessageListCreateView.as_view(), name="room-messages"),
     path("<int:room_id>/moderators/", ModeratorView.as_view(), name="room-moderators"),
+    path("<int:room_id>/settings/", RoomSettingsView.as_view(), name="room-settings"),
     path("<int:room_id>/voice-token/", VoiceTokenView.as_view(), name="voice-token"),
 ]

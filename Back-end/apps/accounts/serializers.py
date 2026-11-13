@@ -7,7 +7,7 @@ from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .levels import level_for, level_progress, vip_for, vip_progress
+from .levels import is_admin, level_for, level_progress, vip_for, vip_progress
 from .models import Profile
 
 USERNAME_RE = re.compile(r"^[a-z0-9_]{3,30}$")
@@ -28,10 +28,15 @@ class PublicUserSerializer(serializers.ModelSerializer):
     vip = serializers.SerializerMethodField()
     frame = serializers.SerializerMethodField()
     mount = serializers.SerializerMethodField()
+    is_admin = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "username", "avatar_url", "level", "wealth_level", "charm_level", "vip", "frame", "mount"]
+        fields = ["id", "username", "avatar_url", "level", "wealth_level", "charm_level", "vip", "frame", "mount",
+                  "is_admin"]
+
+    def get_is_admin(self, user):
+        return is_admin(user)
 
     def get_wealth_level(self, user):
         return level_for(user.profile.wealth_xp)
@@ -40,7 +45,7 @@ class PublicUserSerializer(serializers.ModelSerializer):
         return level_for(user.profile.charm_xp)
 
     def get_vip(self, user):
-        return vip_for(user.profile.wealth_xp)
+        return 5 if is_admin(user) else vip_for(user.profile.wealth_xp)
 
     def get_frame(self, user):
         return user.profile.active_frame()
@@ -64,13 +69,14 @@ class ProfileSerializer(serializers.ModelSerializer):
     vip = serializers.SerializerMethodField()
     frame = serializers.SerializerMethodField()
     mount = serializers.SerializerMethodField()
+    is_admin = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
         fields = [
             "id", "username", "avatar_url", "bio", "country", "level",
             "followers_count", "following_count", "is_following", "is_blocked",
-            "live_room", "created_at", "wealth", "charm", "vip", "frame", "mount",
+            "live_room", "created_at", "wealth", "charm", "vip", "frame", "mount", "is_admin",
         ]
         # `username` is read-only here: it is mirrored on auth.User (used for
         # login), and PATCHing only Profile.username silently desynced the two.
@@ -99,7 +105,10 @@ class ProfileSerializer(serializers.ModelSerializer):
         return level_progress(obj.charm_xp)
 
     def get_vip(self, obj):
-        return vip_progress(obj.wealth_xp)
+        return vip_progress(obj.wealth_xp, admin=is_admin(obj.user))
+
+    def get_is_admin(self, obj):
+        return is_admin(obj.user)
 
     def get_frame(self, obj):
         return obj.active_frame()

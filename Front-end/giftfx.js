@@ -128,9 +128,9 @@ const FX = (() => {
       const layer = document.getElementById('entry-banner-layer');
       if (!layer || !enabled()) return;
       const vip = Math.min(5, Number(u.vip) || 0);
-      const b = el('div', 'fx-entry' + (vip ? ' vip' : ''), `
+      const b = el('div', 'fx-entry' + (u.admin ? ' admin' : vip ? ' vip' : ''), `
         <img class="avatar" src="${imgSrc(u.avatar)}" alt="">
-        <span class="lv">${vip ? 'VIP' + vip : 'Lv ' + (Number(u.level) || 1)}</span>
+        <span class="lv">${u.admin ? 'ADMIN' : vip ? 'VIP' + vip : 'Lv ' + (Number(u.level) || 1)}</span>
         <span class="t"><b>${escapeHTML(u.name)}</b> joined the room</span>
         <span class="spark"></span>`);
       layer.appendChild(b);
